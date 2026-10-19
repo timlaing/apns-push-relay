@@ -16,7 +16,7 @@ updates:
         patterns: ["*"]
     open-pull-requests-limit: 5
   - package-ecosystem: docker
-    directory: /
+    directory: /deploy # the Dockerfile and compose stack live here, not at the root
     schedule:
       interval: weekly
     labels: [dependencies, containers]
