@@ -38,6 +38,10 @@ class AttestError(ValueError):
 
 APPLE_ATTEST_NONCE_OID = x509.ObjectIdentifier("1.2.840.113635.100.8.2")
 
+# Real attestation objects have used both fmt strings; neither is a security
+# property (the chain + nonce-extension binding is), so accept both.
+APPLE_ATTEST_FORMATS = ("apple", "apple-appattest")
+
 # Apple pins the AAGUID per App Attest environment ("Validating apps that
 # connect to your server", attestation step 8).
 AAGUID_BY_ATTEST_ENV = {
@@ -153,12 +157,24 @@ def _verify_binding(
         extension = leaf.extensions.get_extension_for_oid(APPLE_ATTEST_NONCE_OID)
     except x509.ExtensionNotFound:
         raise AttestError("nonce_extension_missing") from None
-    # The extension value is a DER SEQUENCE { OCTET STRING (32) }: a 4-byte
-    # header (30 22 04 20) followed by the 32-byte digest.
+    # The extension value is DER-framed. Apple's observed encoding wraps the
+    # digest in SEQUENCE { [1] EXPLICIT OCTET STRING }: header 30 24 A1 22 04
+    # 20, 38 bytes total — this is what python-fido2's fixed [6:] skip
+    # assumes. A plain SEQUENCE { OCTET STRING } (30 22 04 20, 36 bytes)
+    # carries the identical digest and is accepted too; the security property
+    # is the digest match, not the framing.
     raw = extension.value.value
-    if len(raw) != 36 or raw[:4] != b"\x30\x22\x04\x20":
+    header = next(
+        (
+            candidate
+            for candidate in (b"\x30\x24\xa1\x22\x04\x20", b"\x30\x22\x04\x20")
+            if raw[: len(candidate)] == candidate and len(raw) == len(candidate) + 32
+        ),
+        None,
+    )
+    if header is None:
         raise AttestError("attestation_nonce_mismatch")
-    if not hmac.compare_digest(raw[4:], expected_nonce):
+    if not hmac.compare_digest(raw[len(header) :], expected_nonce):
         raise AttestError("attestation_nonce_mismatch")
     leaf_public = leaf.public_key()
     if not isinstance(leaf_public, EllipticCurvePublicKey):
@@ -206,7 +222,11 @@ def verify_attestation(
     if not isinstance(obj, dict):
         raise AttestError("malformed_attestation")
     fmt, att_stmt, auth_data = obj.get("fmt"), obj.get("attStmt"), obj.get("authData")
-    if fmt != "apple" or not isinstance(att_stmt, dict) or not isinstance(auth_data, bytes):
+    if (
+        fmt not in APPLE_ATTEST_FORMATS
+        or not isinstance(att_stmt, dict)
+        or not isinstance(auth_data, bytes)
+    ):
         raise AttestError("malformed_attestation")
     # Spec §2.2(3): the attested app ID (rpIdHash) must equal the configured
     # bundle ID — this is what stops a genuine build of a *different* app.
