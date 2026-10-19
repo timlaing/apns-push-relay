@@ -1,0 +1,14 @@
+{
+  "_comment": "Golden canonical-signing fixture, authored by hand from the spec (PLAN 3.2; docs/getting-started.md '2 Sign every request'; docs/api/enrollment-spec.md 2.4): message = SHA256HEX(token) \\n METHOD \\n path \\n timestamp \\n nonce \\n SHA256HEX(body) — six lines in that order, joined by a single newline. The input `method` is deliberately lowercase to pin the uppercase rule. Digests are pinned (computed once at authoring).",
+  "inputs": {
+    "token": "tnt_golden-signature-fixture-0001",
+    "method": "post",
+    "path": "/v1/push",
+    "timestamp": 1792230900,
+    "nonce": "golden-nonce-20261019",
+    "body": "{\"grant\":\"v1.golden-fixture\",\"destinationToken\":\"abababababababababababababababababababababababababababababababab\",\"kind\":\"alert\",\"content\":{\"alert\":{\"title\":\"hello\",\"body\":\"golden\"}}}"
+  },
+  "token_digest": "9be1076432a0b8c8111607590a664b45f54e26b5402abd228d6a34f37884087d",
+  "body_digest": "d847f6c384c2caa76ba9aab9d69caccab2b4cb3e4f0a3244ccf9d8ed5d272044",
+  "canonical_message": "9be1076432a0b8c8111607590a664b45f54e26b5402abd228d6a34f37884087d\nPOST\n/v1/push\n1792230900\ngolden-nonce-20261019\nd847f6c384c2caa76ba9aab9d69caccab2b4cb3e4f0a3244ccf9d8ed5d272044"
+}

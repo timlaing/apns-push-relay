@@ -1,0 +1,51 @@
+# Example instance configuration — copy to ./config.yaml (next to
+# docker-compose.yml) and edit. Loaded at /etc/apns-relay/config.yaml in the
+# container; the loader (src/apns_relay/config.py) rejects unknown keys, so
+# this file must match its schema exactly.
+#
+# Relative paths (key_file, grant_issuer_key) resolve against the directory
+# holding this file — /etc/apns-relay/ in the container, ./ on the host.
+
+server:
+  api_domain: api.push.example.org # THIS instance's API domain — set by the
+  # operator; no hostname is hardcoded
+  docs_domain: push.example.org # GitHub Pages domain (CNAME in mkdocs)
+  public_scheme: https
+
+enrollment:
+  # Ed25519 key that signs grants and challenges:
+  #   mkdir -p keys && openssl genpkey -algorithm ed25519 -out keys/issuer.pem
+  grant_issuer_key: keys/issuer.pem
+  challenge_ttl: 600 # seconds; bounds 60..3600
+  # App Attestation root PEMs, downloaded from Apple (development and
+  # production attestations chain to different roots). Until the root for an
+  # App's attest_environment resolves, enroll/finish fails closed with 400
+  # attestation_unavailable; roots are operator-supplied, never hardcoded.
+  # attest_root_certs:
+  #   development: keys/apple-attest-development.pem
+  #   production: keys/apple-attest-production.pem
+
+storage:
+  database: /var/lib/apns-relay/relay.db # SQLite WAL — the only backup target
+
+apps:
+  # One entry per APNs app key. `key_id` is derived from the
+  # AuthKey_<ID>.p8 filename when omitted; the APNs topic is the bundle_id.
+  - id: opencode-client
+    display_name: OpenCode Client # shown in enrollment consent receipts
+    bundle_id: uk.co.laingcorp.opencode-client.OpenCodeRemote
+    team_id: 4C8FWEBR8F # required per key — multi-team supported
+    key_file: keys/opencode/AuthKey_XXXXXXXXXX.p8
+    environments: [sandbox, production]
+    kinds: [alert, background, liveActivity]
+    live_activity: true
+    attest_environment: production # App Attest: development | production
+    registration:
+      callback_required: false # per key — strictness is an App-level policy
+    caps: { title: 64, subtitle: 64, body: 200, sealed: 1024, category: 32, background: 512 }
+    quota:
+      # per key — every App states its own; no global default
+      burst_per_min: 10
+      daily: 5000
+      token_burst_per_min: 20
+    grant_ttl: { min: 900, max: 86400, default: 21600 } # seconds; tenants pick within

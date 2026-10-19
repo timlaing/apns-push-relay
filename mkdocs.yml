@@ -1,0 +1,58 @@
+site_name: apns-push-relay
+site_description: Generic, self-hostable APNs push relay — signed requests in, APNs out
+site_url: https://push.example.org
+repo_url: https://github.com/timlaing/apns-push-relay
+repo_name: timlaing/apns-push-relay
+edit_uri: edit/main/docs/
+
+# Custom domain comes from `server.docs_domain` in config.yaml (PLAN §7) —
+# keep docs/CNAME and site_url in sync when changing it.
+site_dir: site
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+    - toc.follow
+  palette:
+    - scheme: default
+      primary: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.snippets
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - How it works: how-it-works.md
+  - Getting started: getting-started.md
+  - Self-hosting: self-hosting.md
+  - API:
+      - OpenAPI: api/openapi.md
+      - Enrollment spec (v1.0): api/enrollment-spec.md
+  - Privacy: privacy.md
+  - Limits & abuse: limits-and-abuse.md
+  - Status: status.md
+
+extra:
+  social:
+    - icon: material/github
+      link: https://github.com/timlaing/apns-push-relay

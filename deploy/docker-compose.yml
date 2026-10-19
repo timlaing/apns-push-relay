@@ -1,0 +1,98 @@
+# APNs push relay — nginx (TLS + rate limit) + certbot (Let's Encrypt) +
+# relay (FastAPI/uvicorn, internal network only). See PLAN.md §6.
+#
+# Usage: from this directory, copy .env.example → .env and
+# config.yaml.example → config.yaml, drop .p8 keys into ./keys, then
+# `docker compose up -d`. The ${VAR:?...} interpolation below makes compose
+# fail fast when .env is missing required values.
+#
+# nginx is the only published service (80/443); relay and certbot are
+# reachable only over the relay-net bridge (relay needs outbound access to
+# APNs, so the bridge is not `internal: true`).
+
+name: apns-push-relay
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - relay
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Read by envsubst when the template is rendered at container start.
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+      DOCS_DOMAIN: ${DOCS_DOMAIN:?set DOCS_DOMAIN in .env}
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx-entrypoint.sh:/nginx-entrypoint.sh:ro
+      - certbot-www:/var/www/certbot
+      - certbot-conf:/etc/letsencrypt:ro
+    # Bypasses the image entrypoint (which only runs envsubst for an nginx
+    # command); nginx-entrypoint.sh renders the template itself, then runs
+    # nginx with a certificate-mtime reload watcher.
+    command: ["/nginx-entrypoint.sh"]
+    networks:
+      - relay-net
+
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL in .env}
+    volumes:
+      - certbot-www:/var/www/certbot
+      - certbot-conf:/etc/letsencrypt
+    # Issue once if missing, then renew every 12 h; nginx reloads itself when
+    # the certificate changes (mtime watcher in nginx-entrypoint.sh) — no
+    # docker socket shared between containers. $$ escapes compose
+    # interpolation so the shell reads the runtime environment.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        : "$${API_DOMAIN:?API_DOMAIN must be set}"
+        : "$${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL must be set}"
+        mkdir -p /var/www/certbot
+        if [ ! -f "/etc/letsencrypt/live/$${API_DOMAIN}/fullchain.pem" ]; then
+            certbot certonly --webroot -w /var/www/certbot -d "$${API_DOMAIN}" \
+                --agree-tos --non-interactive --email "$${LETSENCRYPT_EMAIL}"
+        fi
+        while :; do
+            sleep 43200
+            certbot renew --webroot -w /var/www/certbot --quiet
+        done
+    networks:
+      - relay-net
+
+  relay:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    environment:
+      RELAY_ADMIN_TOKEN: ${RELAY_ADMIN_TOKEN:?set RELAY_ADMIN_TOKEN in .env}
+      RELAY_MASTER_SECRET: ${RELAY_MASTER_SECRET:?set RELAY_MASTER_SECRET in .env}
+      # RELAY_CONFIG / RELAY_DATA_DIR default to /etc/apns-relay/config.yaml
+      # and /var/lib/apns-relay in the image.
+    volumes:
+      - ./config.yaml:/etc/apns-relay/config.yaml:ro
+      - ./keys:/etc/apns-relay/keys:ro
+      - relay-data:/var/lib/apns-relay
+    networks:
+      - relay-net
+
+networks:
+  relay-net:
+    driver: bridge
+
+volumes:
+  certbot-www:
+  certbot-conf:
+  relay-data:

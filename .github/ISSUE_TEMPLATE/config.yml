@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/timlaing/apns-push-relay/blob/main/SECURITY.md
+    about: Report vulnerabilities privately; never include credentials in public issues.
+  - name: Documentation
+    url: https://timlaing.github.io/apns-push-relay/
+    about: Deployment guide, API reference, privacy and abuse policy.
