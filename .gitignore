@@ -26,3 +26,8 @@ config.yaml
 
 # Build/site output
 site/
+
+# Browser-verification artifacts (playwright MCP + local screenshots)
+.playwright-mcp/
+homepage-*.png
+how-it-works-*.png
