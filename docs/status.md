@@ -16,8 +16,8 @@ instance is live.
 | nginx + certbot      | ✅ shipped    | Compose stack, auto-renew                                        |
 | `relay` CLI          | ✅ shipped    | doctor/status/logs/tenant/denylist/metrics                       |
 | OpenAPI + clients    | ✅ shipped    | Exported schema + reference client                               |
-| iOS app integration  | 🚧 other repo | ios-opencode-client (M6)                                         |
-| Backend plugin       | 🚧 other repo | OpenCode push plugin (M7)                                        |
+| iOS app integration  | 🚧 other repo | Companion iOS app (M6)                                           |
+| Backend plugin       | 🚧 other repo | Tenant-backend push plugin (M7)                                  |
 | App Attest on device | 🚧 pending    | Requires physical device (M4)                                    |
 
 ## Probe it yourself

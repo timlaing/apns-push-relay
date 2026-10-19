@@ -1,5 +1,5 @@
 # APNs push relay — nginx (TLS + rate limit) + certbot (Let's Encrypt) +
-# relay (FastAPI/uvicorn, internal network only). See PLAN.md §6.
+# relay (FastAPI/uvicorn, internal network only). See docs/self-hosting.md.
 #
 # Usage: from this directory, copy .env.example → .env and
 # config.yaml.example → config.yaml, drop .p8 keys into ./keys, then

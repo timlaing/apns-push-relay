@@ -10,9 +10,8 @@ events (see §7)
 This document specifies the highest-risk part of the relay: how a device
 becomes authorized to receive pushes for a tenant, and how that authorization
 is represented, renewed, and revoked. It was written and reviewed before any
-code was written, per the requirements in
-`ios-opencode-client/docs/notifications.md` ("specify and review the
-enrollment challenge/attestation mechanism… Do not claim a fully secure,
+code was written, per the originating design requirements ("specify and review
+the enrollment challenge/attestation mechanism… Do not claim a fully secure,
 stateless enrollment protocol has already been verified"). Review outcomes are
 recorded in §6; the four open questions from the draft are now decisions.
 
@@ -103,8 +102,8 @@ reliable wake-up mechanism.
 
 ```json
 {
-  "app": "opencode-client",
-  "tenantId": "opencode.example.com",
+  "app": "my-app",
+  "tenantId": "hooks.example.com",
   "destinationToken": "<APNs device or ActivityKit token>"
 }
 ```
@@ -127,7 +126,7 @@ invalidDestination`; nothing is stored.
   "challengeId": "<uuid>",
   "attestation": "<base64 Apple attestation>",
   "assertion": "<base64 Apple assertion>",
-  "tenantId": "opencode.example.com",
+  "tenantId": "hooks.example.com",
   "tenantPubkey": "<Ed25519 public key, base64>",
   "kinds": ["alert", "liveActivity"],
   "ttl": 21600
@@ -143,9 +142,9 @@ invalidDestination`; nothing is stored.
 {
   "grant": "v1.<claims>.<sig>",
   "consent": {
-    "tenant": "opencode.example.com",
-    "app": "opencode-client",
-    "appDisplayName": "OpenCode Client",
+    "tenant": "hooks.example.com",
+    "app": "my-app",
+    "appDisplayName": "My App",
     "kinds": ["alert", "liveActivity"],
     "boundAt": 1792230900,
     "expiresAt": 1792252500,
@@ -211,9 +210,9 @@ claims = canonical JSON (sorted keys, no whitespace):
 { "jti":   "<uuid>",                     // denylist handle; rotates on renewal
   "iss":   "<grant-issuer key id>",      // single issuer key in v1
   "tok":   "sha256:…",                  // SHA-256 of destination token
-  "ten":   "opencode.example.com",       // tenant ID
+  "ten":   "hooks.example.com",       // tenant ID
   "tpk":   "<tenant pubkey, base64>",    // binding — see note
-  "app":   "opencode-client",
+  "app":   "my-app",
   "kinds": ["alert", "background", "liveActivity"],
   "env":   "production",                 // from app config, not the caller
   "iat":   1792230900,

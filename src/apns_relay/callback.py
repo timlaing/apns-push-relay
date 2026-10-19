@@ -1,7 +1,6 @@
 """SSRF-hardened HTTPS callback for registration ownership proof.
 
-Ports family-vpn's ``PublicHTTPS``/``https_url`` (relay_service.py:20,
-relay_protocol.py:20). The callback is a one-shot ownership challenge: the
+The callback is a one-shot ownership challenge: the
 relay POSTs a signed nonce and requires an echo. Only public HTTPS on port 443
 is allowed, DNS is resolved once and pinned, and any non-global address is
 rejected — so the callback cannot be used to probe the relay's internal

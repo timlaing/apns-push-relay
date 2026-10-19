@@ -1,7 +1,8 @@
 # Deployment — Docker Compose
 
 nginx (TLS, 16k body cap, per-IP rate limit) + certbot (Let's Encrypt) +
-relay (FastAPI/uvicorn, internal network only). See `PLAN.md` §6.
+relay (FastAPI/uvicorn, internal network only). Full walkthrough:
+`docs/self-hosting.md`.
 
 ## Prerequisites
 
@@ -19,9 +20,9 @@ relay (FastAPI/uvicorn, internal network only). See `PLAN.md` §6.
 cd deploy
 cp .env.example .env               # fill in: tokens, email, domains
 cp config.yaml.example config.yaml # edit: apps, domains
-mkdir -p keys/opencode
-# drop the .p8 key(s) in, e.g. keys/opencode/AuthKey_XXXXXXXXXX.p8
-# chmod 600 keys/opencode/*.p8
+mkdir -p keys/my-app
+# drop the .p8 key(s) in, e.g. keys/my-app/AuthKey_XXXXXXXXXX.p8
+# chmod 600 keys/my-app/*.p8
 openssl genpkey -algorithm ed25519 -out keys/issuer.pem
 docker compose up -d
 ```

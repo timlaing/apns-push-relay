@@ -1,8 +1,7 @@
 """Async APNs sender with a multi-key registry and per-kid JWT cache.
 
-Ports family-vpn's ``APNsSender`` (app.py:141) to asyncio + multi-key. Each
-app-specific ``.p8`` gets its own cached ES256 provider token, keyed by Key ID
-because the JWT ``kid`` header must match the signing key.
+Each app-specific ``.p8`` gets its own cached ES256 provider token, keyed by
+Key ID because the JWT ``kid`` header must match the signing key.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ from .config import AppKeyConfig
 
 SANDBOX_HOST = "api.sandbox.push.apple.com"
 PRODUCTION_HOST = "api.push.apple.com"
-JWT_TTL = 3000  # Apple allows 60 min; refresh at 50 min like family-vpn
+JWT_TTL = 3000  # Apple allows 60 min; refresh at 50 min
 
 
 def _b64url(data: bytes) -> str:

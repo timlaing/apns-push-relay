@@ -7,8 +7,7 @@ Canonical message (PLAN §3.2, enrollment-spec §2.4):
 
 The tenant token is *digested* into the signed message, never raw, so the
 canonical string is safe to log and a leaked signature is useless with any
-other or substituted token. This deliberately diverges from family-vpn's
-``relay_protocol.signature`` (which omits the token digest).
+other or substituted token.
 """
 
 from __future__ import annotations

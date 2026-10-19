@@ -139,7 +139,7 @@ def test_example_config_loads_structurally() -> None:
     assert config.enrollment.attest_root_certs == {}
     assert config.database == Path("/var/lib/apns-relay/relay.db")
     app = config.apps[0]
-    assert app.id == "opencode-client"
+    assert app.id == "my-app"
     assert app.key_id == "XXXXXXXXXX"
     assert app.environments == ("sandbox", "production")
     assert app.kinds == ("alert", "background", "liveActivity")

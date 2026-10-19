@@ -31,11 +31,11 @@ storage:
 apps:
   # One entry per APNs app key. `key_id` is derived from the
   # AuthKey_<ID>.p8 filename when omitted; the APNs topic is the bundle_id.
-  - id: opencode-client
-    display_name: OpenCode Client # shown in enrollment consent receipts
-    bundle_id: REMOVED
-    team_id: REMOVED # required per key — multi-team supported
-    key_file: keys/opencode/AuthKey_XXXXXXXXXX.p8
+  - id: my-app
+    display_name: My App # shown in enrollment consent receipts
+    bundle_id: com.example.myapp # App ID prefix + bundle identifier
+    team_id: XXXXXXXXXX # Apple Team ID, from the developer account
+    key_file: keys/my-app/AuthKey_XXXXXXXXXX.p8
     environments: [sandbox, production]
     kinds: [alert, background, liveActivity]
     live_activity: true
