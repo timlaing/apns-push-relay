@@ -55,9 +55,9 @@ App, forever (or until an operator revokes it).
 
 ## 2. Sign every request
 
-Signed routes — `/v1/push`, `/v1/enroll/renew`, `/v1/revoke` — need an
-Ed25519 keypair. You send the **public** key at enrollment (`tenantPubkey`);
-the private key never leaves your backend.
+Signed routes — `/v1/push`, `/v1/enroll/renew`, `/v1/revoke`,
+`/v1/rotate` — need an Ed25519 keypair. You send the **public** key at
+enrollment (`tenantPubkey`); the private key never leaves your backend.
 
 Canonical message (exact bytes, `\n`-joined):
 
@@ -148,3 +148,17 @@ POST /v1/revoke  {"grant": "v1.…"}   → {"revoked": "<jti>"}
 The `jti` is denylisted until its expiry; the next push with that grant
 fails `403 grant_revoked`. Alternatively your operator can kill a whole
 tenant instantly (`relay tenant revoke`).
+
+## 6. Rotate credentials
+
+```sh
+POST /v1/rotate  {"pubkey": "<new Ed25519 pubkey, base64url>"}   → {"token": "tnt_…", …}
+```
+
+Signed with your **current** token and keypair — the signature is the proof
+you hold the binding being rotated. The response replaces both credentials:
+the new `token` is shown once, the new pubkey becomes the signing key.
+Old grants stop verifying (`403 tenant_mismatch`), so paired devices
+re-enroll with the new key; sending your current pubkey rotates only the
+token. See [enrollment spec §2.7](api/enrollment-spec.md#27-post-v1rotate-tenant-authenticated-signed-credential-rotation)
+for the full semantics.

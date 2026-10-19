@@ -554,11 +554,19 @@ def enroll(
     app: str = APP_ID,
     root: RootCA | None = None,
     extra_finish: dict[str, Any] | None = None,
+    private_key: Any | None = None,
+    pubkey: str | None = None,
 ) -> Enrolled:
-    """Full happy-path enrollment: register → begin → finish."""
+    """Full happy-path enrollment: register → begin → finish.
+
+    ``private_key``/``pubkey`` preselect the tenant signing keypair (used by
+    rotation tests to re-enroll under a rotated binding); otherwise one is
+    generated.
+    """
     kinds = kinds or ["alert"]
     token = token if token is not None else register_tenant(env.client, tenant_id, app)
-    private_key, pubkey = generate_keypair()
+    if private_key is None or pubkey is None:
+        private_key, pubkey = generate_keypair()
     root = root or env.roots["production"]
     bundle = env.config.app(app).bundle_id
 

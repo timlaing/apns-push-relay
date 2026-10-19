@@ -31,7 +31,7 @@ getting started, self-hosting, the API reference, and the threat model.
 
 ```
 tenant backend ──(token + Ed25519 signature)──► relay ──(.p8 keys)──► APNs ──► device
-     register / enroll / push / renew / revoke        quotas · denylist · logs
+     register / enroll / rotate / push / renew / revoke   quotas · denylist · logs
 ```
 
 1. A tenant backend calls `POST /v1/register` once per App to get a token.
@@ -41,6 +41,9 @@ tenant backend ──(token + Ed25519 signature)──► relay ──(.p8 keys)
 3. The backend sends `POST /v1/push` with the grant, signed per request; the
    relay verifies, applies quotas, and forwards to APNs. Outcomes come back
    as `accepted | invalidDestination | retryable | rejected`.
+4. Credentials age: the backend rotates its token + signing key with
+   `POST /v1/rotate` (signed under the old key), and paired devices
+   re-enroll with the new key.
 
 ## Quick start (Docker Compose)
 

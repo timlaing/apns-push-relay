@@ -221,6 +221,17 @@ class RelayClient:
             payload["expiresAt"] = expires_at
         return self.request("POST", "/v1/push", payload, signed=True)
 
+    def rotate(self, new_pubkey: str) -> dict:
+        """Rotate this tenant's signing key and token (spec §2.7).
+
+        Signed with the CURRENT token/keypair — proof of possession. The
+        response's ``token`` replaces the current one, and subsequent
+        requests must be signed with the new keypair passed here; devices
+        re-enroll with ``new_pubkey`` (grants bound to the old key stop
+        verifying).
+        """
+        return self.request("POST", "/v1/rotate", {"pubkey": new_pubkey}, signed=True)
+
     def enroll_begin(self, app: str, tenant_id: str, destination_token: str) -> dict:
         return self.request(
             "POST",

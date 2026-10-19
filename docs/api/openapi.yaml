@@ -29,6 +29,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HTTPValidationError"
+  /v1/rotate:
+    post:
+      tags:
+        - v1
+      summary: Rotate
+      description:
+        "Rotate the tenant token and signing key together.\n\n``authenticate`` just verified\
+        \ this request with the CURRENT token\nand keypair, so the caller demonstrably holds the binding\
+        \ it is\nrotating; the body carries the replacement pubkey. This is the only\npath that may replace\
+        \ a stored ``tenantPubkey`` \u2014 enroll/finish\nstays TOFU-conditional (spec \xA72.2 step 6).\
+        \ The new token is shown\nonce, like register. Grants bound to the old pubkey stop verifying\n\
+        (``tenant_mismatch`` / ``grant_mismatch``); devices re-enroll with\nthe replacement key."
+      operationId: rotate_v1_rotate_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateRequest"
+        required: true
+      responses:
+        "200":
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateResponse"
+        "422":
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
   /v1/enroll/begin:
     post:
       tags:
@@ -476,6 +508,42 @@ components:
       required:
         - revoked
       title: RevokeResponse
+    RotateRequest:
+      properties:
+        pubkey:
+          type: string
+          maxLength: 128
+          minLength: 40
+          title: Pubkey
+      additionalProperties: false
+      type: object
+      required:
+        - pubkey
+      title: RotateRequest
+      description:
+        "Replacement Ed25519 signing key (spec \xA72.7). The request is signed\nwith the CURRENT\
+        \ binding \u2014 proof of possession \u2014 and the tenant token\nrotates in the same call."
+    RotateResponse:
+      properties:
+        tenant:
+          type: string
+          title: Tenant
+        app:
+          type: string
+          title: App
+        token:
+          type: string
+          title: Token
+        rotated_at:
+          type: integer
+          title: Rotated At
+      type: object
+      required:
+        - tenant
+        - app
+        - token
+        - rotated_at
+      title: RotateResponse
     ValidationError:
       properties:
         loc:

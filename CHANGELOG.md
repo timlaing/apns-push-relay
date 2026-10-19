@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Added
+
+- **Credential rotation: `POST /v1/rotate`.** A tenant replaces its token
+  and Ed25519 signing key in one round trip, authorized by a request signed
+  under the current binding (proof of possession). Grants bound to the old
+  key stop verifying; paired devices re-enroll with the new key (enrollment
+  spec §2.7, v1.2 amendment).
+
 ## [0.1.0] - 2026-10-19
 
 ### Added

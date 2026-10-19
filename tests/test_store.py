@@ -76,6 +76,17 @@ def test_set_pubkey_hit_and_miss(store: Store) -> None:
     assert store.set_pubkey("ghost.example.com", APP, "pk") is False
 
 
+def test_rotate_binding_hit_and_miss(store: Store) -> None:
+    store.register_tenant(ID, APP, DIGEST, T0)
+    store.set_pubkey(ID, APP, "pk-1")
+    assert store.rotate_binding(ID, APP, DIGEST2, "pk-2") is True
+    tenant = store.tenant(ID, APP)
+    assert tenant is not None
+    assert tenant.token_digest == DIGEST2
+    assert tenant.pubkey == "pk-2"
+    assert store.rotate_binding("ghost.example.com", APP, DIGEST, "pk") is False
+
+
 def test_tenant_by_token_miss(store: Store) -> None:
     assert store.tenant_by_token(DIGEST) is None
 

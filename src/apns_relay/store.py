@@ -169,6 +169,22 @@ class Store:
             )
         return cur.rowcount > 0
 
+    def rotate_binding(self, id: str, app: str, digest: str, pubkey: str) -> bool:
+        """Rotate a tenant's token digest and signing key in one write.
+
+        Only reachable from the authenticated ``POST /v1/rotate``, whose
+        signature was verified under the *current* binding (proof of
+        possession) — which is why this may replace ``pubkey`` while the
+        unauthenticated enroll/finish path stays conditional (TOFU). False if
+        the registration is gone.
+        """
+        with self.connect() as db:
+            cur = db.execute(
+                "UPDATE tenants SET token_digest=?, pubkey=? WHERE id=? AND app=?",
+                (digest, pubkey, id, app),
+            )
+        return cur.rowcount > 0
+
     def tenant_by_token(self, digest: str) -> Tenant | None:
         with self.connect() as db:
             row = db.execute(

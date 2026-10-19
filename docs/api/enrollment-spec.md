@@ -2,8 +2,8 @@
 
 **Status:** Reviewed v1.0 — M0 gate complete (19 October 2026);
 amended v1.1 — attestation binding steps, signing-key TOFU, Live Activity
-events (see §7)
-**Version:** 1.1 · 19 October 2026
+events (see §7); amended v1.2 — credential rotation (§2.7, see §7)
+**Version:** 1.2 · 19 October 2026
 **Applies to:** relay protocol version 1
 **License:** MIT · Copyright (c) 2026 Tim Laing
 
@@ -189,8 +189,9 @@ Verification, all mandatory:
    the tenant has no key; a _different_ key for an already-bound tenant is
    rejected (`invalid_pubkey`) — enroll/finish is unauthenticated by design,
    so key replacement would let anyone holding a stolen token impersonate the
-   tenant. There is no key-rotation operation in v1 — `relay tenant revoke`
-   is for revocation; a revoked tenant re-registers as a new binding (§2.6).
+   tenant. The only way to change a bound key is authenticated
+   `POST /v1/rotate` (§2.7), which verifies a signature under the current key
+   first. `relay tenant revoke` remains the revocation control (§2.6).
 
 Failure at any step → `400`, challenge burned (single-use even on failure
 after nonce consumption). Success → challenge row deleted, grant issued.
@@ -271,16 +272,52 @@ grant_ttl: { min: 900, max: 86400, default: 21600 } # seconds; min 15m, max 24h
 
 ### 2.6 Revocation
 
-| Path                                      | Trigger                       | Effect                                                                                                                                             |
-| ----------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /v1/revoke` (tenant-authed, signed) | Backend unsubscribes a device | `jti` denylisted until its natural `exp` (bounded storage)                                                                                         |
-| Operator CLI `relay denylist add`         | Abuse response                | `jti`, `tenant`, or `token-hash` denylisted; tenant-wide kill supported                                                                            |
-| 30-day non-use deletion                   | Inactivity                    | Tenant + all grants' `jti`s implicitly dead (tenant token no longer validates)                                                                     |
-| Re-enrollment                             | New token / new consent       | Old grant simply lapses; new grant issued for the same key (TOFU, §2.2 step 6). A _different_ key requires `relay tenant revoke` + re-registration |
+| Path                                      | Trigger                       | Effect                                                                                                                                                                         |
+| ----------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /v1/revoke` (tenant-authed, signed) | Backend unsubscribes a device | `jti` denylisted until its natural `exp` (bounded storage)                                                                                                                     |
+| Operator CLI `relay denylist add`         | Abuse response                | `jti`, `tenant`, or `token-hash` denylisted; tenant-wide kill supported                                                                                                        |
+| 30-day non-use deletion                   | Inactivity                    | Tenant + all grants' `jti`s implicitly dead (tenant token no longer validates)                                                                                                 |
+| Re-enrollment                             | New token / new consent       | Old grant simply lapses; new grant issued for the same key (TOFU, §2.2 step 6). A _different_ key requires `POST /v1/rotate` (§2.7) or `relay tenant revoke` + re-registration |
 
 Denylist entries carry the grant's `exp` as their natural purge time — no
 unbounded growth. There is no per-grant _stateful_ check on the delivery path:
 verification reads the denylist (small, hot) and nothing else.
+
+---
+
+### 2.7 `POST /v1/rotate` (tenant-authenticated, signed) — credential rotation
+
+- **Request**: `{"pubkey": "<replacement Ed25519 pubkey, base64url>"}`
+- **Auth**: tenant token + canonical Ed25519 request signature (token-bound,
+  as `/v1/push`) under the **current** binding
+- **Response**: `200 {"tenant", "app", "token", "rotated_at"}` — `token` is
+  shown once, like register
+
+The two credentials age differently: an operator can reissue the token
+(`relay tenant reissue`), but until §2.7 the tenant could not replace its own
+signing key. A signed request under the current keypair is exactly proof of
+possession, so rotation lives on the authenticated route — never on
+unauthenticated `enroll/finish` (§2.2 step 6).
+
+Semantics:
+
+- Verification runs before anything changes: a stale keypair gets
+  `401 invalid_signature`, a stale token `401 unknown_tenant`, an unenrolled
+  registration `401 enrollment_required`.
+- Token digest and stored pubkey are replaced in **one** write; the old token
+  stops verifying immediately. Sending the **current** pubkey is a token-only
+  rotation (key untouched).
+- Outstanding grants carry the old key (`tpk`) and stop verifying:
+  `403 tenant_mismatch` on `/v1/push`, `403 grant_mismatch` on renew. Devices
+  re-enroll with the replacement key — TOFU passes because the stored key _is_
+  the one being enrolled (§2.2 step 6).
+- Tenant id, App, quotas and `last_seen` continue unchanged; the nonce and
+  skew rules of the signed-request contract apply as to every signed route.
+
+Threat posture: an attacker who already holds **both** token and keypair can
+act as the tenant (A7) and can likewise rotate — rotation is the tenant's
+**incident response**: rotate once, re-enroll devices, and the old key stops
+verifying everywhere at once.
 
 ---
 
@@ -295,24 +332,24 @@ or key revocation).
 
 ### 3.2 Adversaries and mitigations
 
-| #   | Attack                                                              | Mitigation                                                                                                                                                                                                                                                           |
-| --- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A1  | Replay a captured push request                                      | TLS + single-use nonce + token-bound canonical signature (PLAN §3.2)                                                                                                                                                                                                 |
-| A2  | Splice a stolen signature onto another tenant's token               | Token digest inside the signed message; verification binds them                                                                                                                                                                                                      |
-| A3  | Enroll a victim's device token (unsolicited pushes)                 | Challenge push must be echoed — attacker never receives it; App Attest requires a genuine app; user consent required in-app                                                                                                                                          |
-| A4  | Cloned/fake client enrolling devices                                | App Attest chain + **nonce-extension / credential-ID binding** + exact bundle-ID + AAGUID/environment check; no attestation → no grant                                                                                                                               |
-| A5  | Use a stolen grant to push                                          | Grant alone is insufficient (tenant token + signature also required); short TTL; `jti` denylist; token-hash binding stops token substitution                                                                                                                         |
-| A6  | Stolen tenant token without keypair                                 | Cannot sign requests → `401`; `relay tenant reissue` rotates                                                                                                                                                                                                         |
-| A7  | Stolen tenant token **and** keypair                                 | Full tenant impersonation until detected — bounded by per-key quotas, per-token caps, denylist, 30-day expiry; incident path is `relay denylist add --tenant`                                                                                                        |
-| A8  | SSRF / internal probing via `callback`                              | `PublicHTTPS` guard: HTTPS/443 only, resolve-once, global-address-only, TLS pinned                                                                                                                                                                                   |
-| A9  | Quota exhaustion / spam one device                                  | Per-App burst/daily quota, per-token blind-index cap, nginx per-IP `limit_req`, 16 KB body cap                                                                                                                                                                       |
-| A10 | Push arbitrary topic / environment / APNs host                      | Never caller-supplied; resolved from `app` in operator config                                                                                                                                                                                                        |
-| A11 | Phishing banners under a trusted app's name                         | Structured capped fields only (no raw APNs payload), operator-revocable, documented content policy                                                                                                                                                                   |
-| A12 | Device token or content leak from relay storage                     | No device table, no payload persistence, no content in logs; tokens hashed where stored at all                                                                                                                                                                       |
-| A13 | Malicious relay operator (modified build logging tokens in transit) | Tokens never stored by the stock relay — nothing to steal at rest; sealed blob keeps detail blind; honest disclosure (§1); self-hosting removes the party; optional future: verifiable image digests                                                                 |
-| A14 | Enrollment-endpoint DoS                                             | Per-IP rate limits on `enroll/*`, challenge TTL, single-use rows                                                                                                                                                                                                     |
-| A15 | Grant-issuer key compromise                                         | **Single issuer key in v1** (no key-set shipping). Rotation runbook (M8): install new key, restart — all outstanding grants (≤ max 24h TTL) lapse early; tenants re-enroll. `iss` claim present from v1 so a key set can be added later without a grant-format break |
-| A16 | Replace a tenant's signing key via unauthenticated `enroll/finish`  | Signing key is trust-on-first-use (§2.2 step 6): stored only while empty; a different key → `invalid_pubkey`; concurrent first-enroll writes are conditional. No key rotation in v1 — `relay tenant revoke` is for revocation, after which the tenant re-registers   |
+| #   | Attack                                                              | Mitigation                                                                                                                                                                                                                                                                                                                                         |
+| --- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | Replay a captured push request                                      | TLS + single-use nonce + token-bound canonical signature (PLAN §3.2)                                                                                                                                                                                                                                                                               |
+| A2  | Splice a stolen signature onto another tenant's token               | Token digest inside the signed message; verification binds them                                                                                                                                                                                                                                                                                    |
+| A3  | Enroll a victim's device token (unsolicited pushes)                 | Challenge push must be echoed — attacker never receives it; App Attest requires a genuine app; user consent required in-app                                                                                                                                                                                                                        |
+| A4  | Cloned/fake client enrolling devices                                | App Attest chain + **nonce-extension / credential-ID binding** + exact bundle-ID + AAGUID/environment check; no attestation → no grant                                                                                                                                                                                                             |
+| A5  | Use a stolen grant to push                                          | Grant alone is insufficient (tenant token + signature also required); short TTL; `jti` denylist; token-hash binding stops token substitution                                                                                                                                                                                                       |
+| A6  | Stolen tenant token without keypair                                 | Cannot sign requests → `401`; `relay tenant reissue` rotates                                                                                                                                                                                                                                                                                       |
+| A7  | Stolen tenant token **and** keypair                                 | Full tenant impersonation until detected — bounded by per-key quotas, per-token caps, denylist, 30-day expiry; incident path is `relay denylist add --tenant`                                                                                                                                                                                      |
+| A8  | SSRF / internal probing via `callback`                              | `PublicHTTPS` guard: HTTPS/443 only, resolve-once, global-address-only, TLS pinned                                                                                                                                                                                                                                                                 |
+| A9  | Quota exhaustion / spam one device                                  | Per-App burst/daily quota, per-token blind-index cap, nginx per-IP `limit_req`, 16 KB body cap                                                                                                                                                                                                                                                     |
+| A10 | Push arbitrary topic / environment / APNs host                      | Never caller-supplied; resolved from `app` in operator config                                                                                                                                                                                                                                                                                      |
+| A11 | Phishing banners under a trusted app's name                         | Structured capped fields only (no raw APNs payload), operator-revocable, documented content policy                                                                                                                                                                                                                                                 |
+| A12 | Device token or content leak from relay storage                     | No device table, no payload persistence, no content in logs; tokens hashed where stored at all                                                                                                                                                                                                                                                     |
+| A13 | Malicious relay operator (modified build logging tokens in transit) | Tokens never stored by the stock relay — nothing to steal at rest; sealed blob keeps detail blind; honest disclosure (§1); self-hosting removes the party; optional future: verifiable image digests                                                                                                                                               |
+| A14 | Enrollment-endpoint DoS                                             | Per-IP rate limits on `enroll/*`, challenge TTL, single-use rows                                                                                                                                                                                                                                                                                   |
+| A15 | Grant-issuer key compromise                                         | **Single issuer key in v1** (no key-set shipping). Rotation runbook (M8): install new key, restart — all outstanding grants (≤ max 24h TTL) lapse early; tenants re-enroll. `iss` claim present from v1 so a key set can be added later without a grant-format break                                                                               |
+| A16 | Replace a tenant's signing key via unauthenticated `enroll/finish`  | Signing key is trust-on-first-use (§2.2 step 6): stored only while empty; a different key → `invalid_pubkey`; concurrent first-enroll writes are conditional. Rotation only via authenticated `POST /v1/rotate` (§2.7): a signature under the current key proves possession before replacement; `relay tenant revoke` stays the revocation control |
 
 ### 3.3 Out of scope (v1)
 
@@ -381,11 +418,11 @@ The four M0 open questions are resolved:
 
 ---
 
-## 7. Amendments (v1.1, 19 October 2026)
+## 7. Amendments (v1.1–v1.2, 19 October 2026)
 
 Recorded here so the reviewed v1.0 text and the implemented behavior stay
-traceable. All four came out of the post-implementation review; none weaken a
-v1.0 property.
+traceable. Items 1–4 came out of the post-implementation review; item 5
+records the v1.2 addition. None weaken a v1.0 property.
 
 1. **Attestation binding steps made explicit (§2.2 step 3).** v1.0 named the
    security properties (chain, app ID, environment); v1.1 pins the exact
@@ -407,3 +444,9 @@ key)` (X9.62 uncompressed), COSE key hash equality, attestation counter 0,
 4. **Live Activity events are `update`/`end` only.** Push-to-start requires
    `attributes-type`/`attributes`, which this API does not carry; `start` is
    rejected rather than accepted-and-dropped (PLAN §1 already deferred it).
+5. **Credential rotation added (§2.7, v1.2).** Supersedes the "no key
+   rotation" note in amendment 3: `POST /v1/rotate` now exists, but only on
+   the authenticated route — a signature under the current binding is the
+   possession proof, and both token and pubkey are replaced in one write.
+   `enroll/finish` stays TOFU-conditional (§2.2 step 6); `relay tenant
+revoke` stays a revocation control (§2.6).

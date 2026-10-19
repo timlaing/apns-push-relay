@@ -29,6 +29,21 @@ class RegisterResponse(BaseModel):
     expires_at: int
 
 
+class RotateRequest(Strict):
+    """Replacement Ed25519 signing key (spec §2.7). The request is signed
+    with the CURRENT binding — proof of possession — and the tenant token
+    rotates in the same call."""
+
+    pubkey: str = Field(min_length=40, max_length=128)
+
+
+class RotateResponse(BaseModel):
+    tenant: str
+    app: str
+    token: str
+    rotated_at: int
+
+
 class PushContent(Strict):
     """Content is keyed by kind (PLAN §3.2) plus the kind-independent sealed
     blob. The section for ``kind`` is required — enforced in payload build."""

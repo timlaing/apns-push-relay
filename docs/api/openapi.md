@@ -10,9 +10,9 @@ by `scripts/export_openapi.py` — regenerate it whenever routes change
   `https://api.push.example.org`).
 - **Content type**: `application/json` everywhere; unknown request fields
   are rejected (`422 invalid_request`, `extra="forbid"`).
-- **Signed routes** — `/v1/push`, `/v1/enroll/renew`, `/v1/revoke` — carry
-  `Authorization: Bearer tnt_…`, `X-Relay-Time`, `X-Relay-Nonce`,
-  `X-Relay-Signature` (canonical message in
+- **Signed routes** — `/v1/push`, `/v1/enroll/renew`, `/v1/revoke`,
+  `/v1/rotate` — carry `Authorization: Bearer tnt_…`, `X-Relay-Time`,
+  `X-Relay-Nonce`, `X-Relay-Signature` (canonical message in
   [Getting started](../getting-started.md#2-sign-every-request)).
 - **Push results are always `200`** with
   `result ∈ {accepted, invalidDestination, retryable, rejected}`.
@@ -30,6 +30,7 @@ by `scripts/export_openapi.py` — regenerate it whenever routes change
 | `POST /v1/enroll/finish` | —      | App Attest + assertion → grant + consent |
 | `POST /v1/enroll/renew`  | signed | Fresh grant, new `jti`, same bindings    |
 | `POST /v1/revoke`        | signed | Denylist a grant's `jti`                 |
+| `POST /v1/rotate`        | signed | Rotate tenant token + signing key        |
 
 !!! note "Regenerating"
 The block below is the literal content of `docs/api/openapi.yaml`

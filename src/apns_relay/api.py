@@ -68,6 +68,8 @@ from .models import (
     RegisterResponse,
     RevokeRequest,
     RevokeResponse,
+    RotateRequest,
+    RotateResponse,
 )
 from .payload import PayloadError, build_payload, priority_for
 from .ratelimit import ENROLL_LIMIT, REGISTER_LIMIT, client_ip
@@ -258,6 +260,43 @@ def v1_router(state: AppState) -> APIRouter:
             expires_at=int(now) + TENANT_TTL,
         )
 
+    # -- POST /v1/rotate (spec §2.7) -----------------------------------------
+
+    @router.post("/rotate", response_model=RotateResponse)
+    async def rotate(
+        body: RotateRequest,
+        ctx: AuthContext = Depends(authenticate),
+    ) -> RotateResponse:
+        """Rotate the tenant token and signing key together.
+
+        ``authenticate`` just verified this request with the CURRENT token
+        and keypair, so the caller demonstrably holds the binding it is
+        rotating; the body carries the replacement pubkey. This is the only
+        path that may replace a stored ``tenantPubkey`` — enroll/finish
+        stays TOFU-conditional (spec §2.2 step 6). The new token is shown
+        once, like register. Grants bound to the old pubkey stop verifying
+        (``tenant_mismatch`` / ``grant_mismatch``); devices re-enroll with
+        the replacement key.
+        """
+        now = time.time()
+        app_for_tenant(ctx.tenant)  # credentials never outlive their App
+        try:
+            public_key_from_b64(body.pubkey)
+        except ValueError:
+            raise BadRequest("invalid_pubkey") from None
+        token = mint_tenant_token()
+        if not state.store.rotate_binding(
+            ctx.tenant.id, ctx.tenant.app, token_digest(token), body.pubkey
+        ):
+            raise Unauthorized("unknown_tenant")  # revoked mid-request
+        state.metrics.inc("rotations_total", "ok")
+        return RotateResponse(
+            tenant=ctx.tenant.id,
+            app=ctx.tenant.app,
+            token=token,
+            rotated_at=int(now),
+        )
+
     # -- POST /v1/enroll/begin (spec §2.1) -----------------------------------
 
     @router.post("/enroll/begin", response_model=EnrollBeginResponse)
@@ -389,13 +428,14 @@ def v1_router(state: AppState) -> APIRouter:
             public_key_from_b64(body.tenantPubkey)
         except ValueError:
             raise BadRequest("invalid_pubkey") from None
-        # Trust-on-first-use (spec §2.4): the signing key is set exactly once.
-        # enroll/finish is unauthenticated by design (App Attest proves the
-        # device), so replacing a stored key here would let anyone holding a
-        # stolen token enroll their own key and impersonate the tenant. There
-        # is no key-rotation operation in v1: `relay tenant revoke` is a
-        # revocation control — afterwards the tenant re-registers as a new
-        # binding.
+        # Trust-on-first-use (spec §2.2 step 6): the signing key is set
+        # exactly once HERE. enroll/finish is unauthenticated by design (App
+        # Attest proves the device), so replacing a stored key here would let
+        # anyone holding a stolen token enroll their own key and impersonate
+        # the tenant. The only rotation path is authenticated POST
+        # /v1/rotate (spec §2.7), which verifies a signature under the
+        # current key before replacing it; `relay tenant revoke` remains the
+        # revocation control (spec §2.6).
         if tenant.pubkey and tenant.pubkey != body.tenantPubkey:
             raise BadRequest("invalid_pubkey")
         if not tenant.pubkey and not state.store.set_pubkey(
