@@ -485,7 +485,8 @@ def test_verify_attestation_attestation_nonce_mismatch(
     ],
 )
 def test_verify_attestation_malformed_nonce_extension(root, nonce_value) -> None:
-    # The extension value must be exactly the DER SEQUENCE { OCTET STRING (32) }.
+    # The extension value must be one of the accepted DER framings wrapping
+    # exactly32 digest bytes.
     attestation, cred_key = _attestation(root)
     obj = cbor2.loads(attestation)
     leaf = _make_cert(
@@ -495,6 +496,34 @@ def test_verify_attestation_malformed_nonce_extension(root, nonce_value) -> None
     with pytest.raises(AttestError) as exc:
         _verify_bound(cbor2.dumps(obj), root)
     assert exc.value.code == "attestation_nonce_mismatch"
+
+
+def test_verify_attestation_plain_octet_string_nonce_accepted(root) -> None:
+    # The plain SEQUENCE { OCTET STRING } framing carries the same digest and
+    # is accepted alongside Apple's [1] EXPLICIT framing.
+    attestation = _attestation(root, explicit_nonce_tag=False)[0]
+    verify_attestation(
+        attestation,
+        root=root.cert,
+        expected_rp_id=BUNDLE_ID,
+        expected_aaguid=_PRODUCTION_AAGUID,
+        nonce=_NONCE.encode(),
+        server_challenge=_SERVER_CHALLENGE.encode(),
+    )
+
+
+def test_verify_attestation_fmt_apple_appattest_accepted(root) -> None:
+    # Real attestation objects have used both fmt strings; neither is a
+    # security property (the chain + nonce binding is), so both are accepted.
+    attestation = _reserialized(root, fmt="apple-appattest")
+    verify_attestation(
+        attestation,
+        root=root.cert,
+        expected_rp_id=BUNDLE_ID,
+        expected_aaguid=_PRODUCTION_AAGUID,
+        nonce=_NONCE.encode(),
+        server_challenge=_SERVER_CHALLENGE.encode(),
+    )
 
 
 def test_verify_attestation_forged_auth_data_rejected(root) -> None:
