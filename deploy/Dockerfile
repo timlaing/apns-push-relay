@@ -1,7 +1,7 @@
 # APNs push relay image — FastAPI/uvicorn app + `relay` admin CLI.
 # Build from the repo root: docker build -f deploy/Dockerfile .
 
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
