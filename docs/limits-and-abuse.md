@@ -65,6 +65,6 @@ footer. For this project: open a
 (security-sensitive reports: use GitHub Security Advisories on the repo).
 
 !!! info "Operator responsibility"
-A relay operator is the controller of the little data that exists
-(token digests, blind indexes). The [privacy](privacy.md) page is the
-contract to your tenants — keep it true for your deployment.
+    A relay operator is the controller of the little data that exists
+    (token digests, blind indexes). The [privacy](privacy.md) page is the
+    contract to your tenants — keep it true for your deployment.

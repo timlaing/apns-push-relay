@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning].
   (`ghcr.io/timlaing/apns-push-relay`, one tag per release); building
   from source remains the compose fallback (`up --build`).
 
+### Fixed
+
+- **Docs rendering:** admonition bodies were not indented on four pages
+  (`limits-and-abuse`, `status`, `api/openapi`, `self-hosting` ×2), so
+  they rendered as empty title boxes with the text orphaned below; the
+  enrollment spec's Status/Version/Applies-to/License header lines merged
+  into a single run-on paragraph.
+
 ## [0.1.0] - 2026-10-19
 
 ### Added

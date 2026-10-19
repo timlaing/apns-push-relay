@@ -3,8 +3,11 @@
 **Status:** Reviewed v1.0 — M0 gate complete (19 October 2026);
 amended v1.1 — attestation binding steps, signing-key TOFU, Live Activity
 events (see §7); amended v1.2 — credential rotation (§2.7, see §7)
+
 **Version:** 1.2 · 19 October 2026
+
 **Applies to:** relay protocol version 1
+
 **License:** MIT · Copyright (c) 2026 Tim Laing
 
 This document specifies the highest-risk part of the relay: how a device

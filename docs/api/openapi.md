@@ -36,9 +36,9 @@ by `scripts/export_openapi.py` — regenerate it whenever routes change
 | `POST /v1/rotate`        | signed | Rotate tenant token + signing key        |
 
 !!! note "Regenerating"
-The block below is the literal content of `docs/api/openapi.yaml`
-(included at build time), so it can never drift from the code that was
-exported.
+    The block below is the literal content of `docs/api/openapi.yaml`
+    (included at build time), so it can never drift from the code that was
+    exported.
 
 ```yaml
 --8<-- "docs/api/openapi.yaml"

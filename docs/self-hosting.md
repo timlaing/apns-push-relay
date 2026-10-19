@@ -114,9 +114,9 @@ docker compose -f deploy/docker-compose.yml up -d
 ```
 
 !!! tip "Building from source (alternative)"
-To run a modified build — or when no release image exists yet — let
-compose build from the checkout instead (`build:` in
-`docker-compose.yml`; with no local image, `up` builds automatically):
+    To run a modified build — or when no release image exists yet — let
+    compose build from the checkout instead (`build:` in
+    `docker-compose.yml`; with no local image, `up` builds automatically):
 
     ```sh
     docker compose -f deploy/docker-compose.yml up -d --build
@@ -131,8 +131,8 @@ docker compose exec relay relay status
 ```
 
 !!! note "Staging first"
-Use Let's Encrypt **staging** while iterating on DNS to avoid rate
-limits — the compose file documents the switch.
+    Use Let's Encrypt **staging** while iterating on DNS to avoid rate
+    limits — the compose file documents the switch.
 
 ## 5. Day-two operations
 

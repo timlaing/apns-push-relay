@@ -1,9 +1,9 @@
 # Status
 
 !!! info "This page"
-Component status below reflects the repository as it ships; a generated
-uptime snapshot (M8) will replace the manual table once the hosted
-instance is live.
+    Component status below reflects the repository as it ships; a generated
+    uptime snapshot (M8) will replace the manual table once the hosted
+    instance is live.
 
 ## Components
 
