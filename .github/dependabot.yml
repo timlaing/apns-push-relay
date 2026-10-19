@@ -13,7 +13,7 @@ updates:
     labels: [dependencies, python]
     groups:
       python-dependencies:
-        patterns: ['*']
+        patterns: ["*"]
     open-pull-requests-limit: 5
   - package-ecosystem: docker
     directory: /
@@ -22,5 +22,5 @@ updates:
     labels: [dependencies, containers]
     groups:
       container-bases:
-        patterns: ['*']
+        patterns: ["*"]
     open-pull-requests-limit: 5

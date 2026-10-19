@@ -7,161 +7,161 @@ paths:
   /v1/register:
     post:
       tags:
-      - v1
+        - v1
       summary: Register
       operationId: register_v1_register_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RegisterRequest'
+              $ref: "#/components/schemas/RegisterRequest"
         required: true
       responses:
-        '201':
+        "201":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RegisterResponse'
-        '422':
+                $ref: "#/components/schemas/RegisterResponse"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
   /v1/enroll/begin:
     post:
       tags:
-      - v1
+        - v1
       summary: Enroll Begin
       operationId: enroll_begin_v1_enroll_begin_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EnrollBeginRequest'
+              $ref: "#/components/schemas/EnrollBeginRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EnrollBeginResponse'
-        '422':
+                $ref: "#/components/schemas/EnrollBeginResponse"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
   /v1/enroll/finish:
     post:
       tags:
-      - v1
+        - v1
       summary: Enroll Finish
       operationId: enroll_finish_v1_enroll_finish_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EnrollFinishRequest'
+              $ref: "#/components/schemas/EnrollFinishRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EnrollFinishResponse'
-        '422':
+                $ref: "#/components/schemas/EnrollFinishResponse"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
   /v1/enroll/renew:
     post:
       tags:
-      - v1
+        - v1
       summary: Enroll Renew
       operationId: enroll_renew_v1_enroll_renew_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EnrollRenewRequest'
+              $ref: "#/components/schemas/EnrollRenewRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EnrollRenewResponse'
-        '422':
+                $ref: "#/components/schemas/EnrollRenewResponse"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
   /v1/revoke:
     post:
       tags:
-      - v1
+        - v1
       summary: Revoke
       operationId: revoke_v1_revoke_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/RevokeRequest'
+              $ref: "#/components/schemas/RevokeRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RevokeResponse'
-        '422':
+                $ref: "#/components/schemas/RevokeResponse"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
   /v1/push:
     post:
       tags:
-      - v1
+        - v1
       summary: Push
       operationId: push_v1_push_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PushRequest'
+              $ref: "#/components/schemas/PushRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PushResponse'
-        '422':
+                $ref: "#/components/schemas/PushResponse"
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
   /admin/status:
     get:
       tags:
-      - admin
+        - admin
       summary: Status
       operationId: status_admin_status_get
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
@@ -172,20 +172,20 @@ paths:
   /admin/tenants:
     get:
       tags:
-      - admin
+        - admin
       summary: Tenants
       operationId: tenants_admin_tenants_get
       parameters:
-      - name: app
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: App
+        - name: app
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: App
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
@@ -193,36 +193,36 @@ paths:
                 type: object
                 additionalProperties: true
                 title: Response Tenants Admin Tenants Get
-        '422':
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
   /admin/tenants/verify:
     get:
       tags:
-      - admin
+        - admin
       summary: Verify
       operationId: verify_admin_tenants_verify_get
       parameters:
-      - name: tenant
-        in: query
-        required: true
-        schema:
-          type: string
-          minLength: 1
-          title: Tenant
-      - name: app
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: App
+        - name: tenant
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            title: Tenant
+        - name: app
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: string
+              - type: "null"
+            title: App
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
@@ -230,26 +230,26 @@ paths:
                 type: object
                 additionalProperties: true
                 title: Response Verify Admin Tenants Verify Get
-        '422':
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
   /admin/tenants/revoke:
     post:
       tags:
-      - admin
+        - admin
       summary: Revoke Tenant
       operationId: revoke_tenant_admin_tenants_revoke_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AdminTenantRef'
+              $ref: "#/components/schemas/AdminTenantRef"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
@@ -257,26 +257,26 @@ paths:
                 additionalProperties: true
                 type: object
                 title: Response Revoke Tenant Admin Tenants Revoke Post
-        '422':
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
   /admin/tenants/reissue:
     post:
       tags:
-      - admin
+        - admin
       summary: Reissue Tenant
       operationId: reissue_tenant_admin_tenants_reissue_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AdminReissueRequest'
+              $ref: "#/components/schemas/AdminReissueRequest"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
@@ -284,20 +284,20 @@ paths:
                 additionalProperties: true
                 type: object
                 title: Response Reissue Tenant Admin Tenants Reissue Post
-        '422':
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
   /admin/denylist:
     get:
       tags:
-      - admin
+        - admin
       summary: Denylist
       operationId: denylist_admin_denylist_get
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
@@ -307,17 +307,17 @@ paths:
                 title: Response Denylist Admin Denylist Get
     post:
       tags:
-      - admin
+        - admin
       summary: Denylist Add
       operationId: denylist_add_admin_denylist_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AdminDenylistEntry'
+              $ref: "#/components/schemas/AdminDenylistEntry"
         required: true
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
@@ -325,36 +325,36 @@ paths:
                 additionalProperties: true
                 type: object
                 title: Response Denylist Add Admin Denylist Post
-        '422':
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
   /admin/logs:
     get:
       tags:
-      - admin
+        - admin
       summary: Logs
       operationId: logs_admin_logs_get
       parameters:
-      - name: since
-        in: query
-        required: false
-        schema:
-          anyOf:
-          - type: number
-          - type: 'null'
-          title: Since
-      - name: errors
-        in: query
-        required: false
-        schema:
-          type: boolean
-          default: false
-          title: Errors
+        - name: since
+          in: query
+          required: false
+          schema:
+            anyOf:
+              - type: number
+              - type: "null"
+            title: Since
+        - name: errors
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+            title: Errors
       responses:
-        '200':
+        "200":
           description: Successful Response
           content:
             application/json:
@@ -362,12 +362,12 @@ paths:
                 type: object
                 additionalProperties: true
                 title: Response Logs Admin Logs Get
-        '422':
+        "422":
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                $ref: "#/components/schemas/HTTPValidationError"
 components:
   schemas:
     AdminDenylistEntry:
@@ -380,13 +380,13 @@ components:
           title: Key
         expires:
           anyOf:
-          - type: integer
-          - type: 'null'
+            - type: integer
+            - type: "null"
           title: Expires
       additionalProperties: false
       type: object
       required:
-      - key
+        - key
       title: AdminDenylistEntry
       description: A denylist key is a grant ``jti`` (uuid) or ``sha256:<hex>`` token hash.
     AdminReissueRequest:
@@ -404,8 +404,8 @@ components:
       additionalProperties: false
       type: object
       required:
-      - tenant
-      - app
+        - tenant
+        - app
       title: AdminReissueRequest
     AdminTenantRef:
       properties:
@@ -416,14 +416,14 @@ components:
           title: Tenant
         app:
           anyOf:
-          - type: string
-            maxLength: 64
-          - type: 'null'
+            - type: string
+              maxLength: 64
+            - type: "null"
           title: App
       additionalProperties: false
       type: object
       required:
-      - tenant
+        - tenant
       title: AdminTenantRef
     EnrollBeginRequest:
       properties:
@@ -446,9 +446,9 @@ components:
       additionalProperties: false
       type: object
       required:
-      - app
-      - tenantId
-      - destinationToken
+        - app
+        - tenantId
+        - destinationToken
       title: EnrollBeginRequest
     EnrollBeginResponse:
       properties:
@@ -463,9 +463,9 @@ components:
           title: Expiresat
       type: object
       required:
-      - challengeId
-      - serverChallenge
-      - expiresAt
+        - challengeId
+        - serverChallenge
+        - expiresAt
       title: EnrollBeginResponse
     EnrollFinishRequest:
       properties:
@@ -498,27 +498,27 @@ components:
           items:
             type: string
             enum:
-            - alert
-            - background
-            - liveActivity
+              - alert
+              - background
+              - liveActivity
           type: array
           maxItems: 3
           minItems: 1
           title: Kinds
         ttl:
           anyOf:
-          - type: integer
-          - type: 'null'
+            - type: integer
+            - type: "null"
           title: Ttl
       additionalProperties: false
       type: object
       required:
-      - challengeId
-      - attestation
-      - assertion
-      - tenantId
-      - tenantPubkey
-      - kinds
+        - challengeId
+        - attestation
+        - assertion
+        - tenantId
+        - tenantPubkey
+        - kinds
       title: EnrollFinishRequest
     EnrollFinishResponse:
       properties:
@@ -531,8 +531,8 @@ components:
           title: Consent
       type: object
       required:
-      - grant
-      - consent
+        - grant
+        - consent
       title: EnrollFinishResponse
     EnrollRenewRequest:
       properties:
@@ -543,13 +543,13 @@ components:
           title: Grant
         ttl:
           anyOf:
-          - type: integer
-          - type: 'null'
+            - type: integer
+            - type: "null"
           title: Ttl
       additionalProperties: false
       type: object
       required:
-      - grant
+        - grant
       title: EnrollRenewRequest
     EnrollRenewResponse:
       properties:
@@ -561,14 +561,14 @@ components:
           title: Expiresat
       type: object
       required:
-      - grant
-      - expiresAt
+        - grant
+        - expiresAt
       title: EnrollRenewResponse
     HTTPValidationError:
       properties:
         detail:
           items:
-            $ref: '#/components/schemas/ValidationError'
+            $ref: "#/components/schemas/ValidationError"
           type: array
           title: Detail
       type: object
@@ -577,31 +577,32 @@ components:
       properties:
         alert:
           anyOf:
-          - additionalProperties: true
-            type: object
-          - type: 'null'
+            - additionalProperties: true
+              type: object
+            - type: "null"
           title: Alert
         background:
           anyOf:
-          - additionalProperties: true
-            type: object
-          - type: 'null'
+            - additionalProperties: true
+              type: object
+            - type: "null"
           title: Background
         liveActivity:
           anyOf:
-          - additionalProperties: true
-            type: object
-          - type: 'null'
+            - additionalProperties: true
+              type: object
+            - type: "null"
           title: Liveactivity
         sealed:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: "null"
           title: Sealed
       additionalProperties: false
       type: object
       title: PushContent
-      description: "Content is keyed by kind (PLAN \xA73.2) plus the kind-independent sealed\nblob. The\
+      description:
+        "Content is keyed by kind (PLAN \xA73.2) plus the kind-independent sealed\nblob. The\
         \ section for ``kind`` is required \u2014 enforced in payload build."
     PushRequest:
       properties:
@@ -619,54 +620,54 @@ components:
         kind:
           type: string
           enum:
-          - alert
-          - background
-          - liveActivity
+            - alert
+            - background
+            - liveActivity
           title: Kind
         eventId:
           anyOf:
-          - type: string
-            maxLength: 64
-          - type: 'null'
+            - type: string
+              maxLength: 64
+            - type: "null"
           title: Eventid
         expiresAt:
           anyOf:
-          - type: integer
-          - type: 'null'
+            - type: integer
+            - type: "null"
           title: Expiresat
         content:
-          $ref: '#/components/schemas/PushContent'
+          $ref: "#/components/schemas/PushContent"
       additionalProperties: false
       type: object
       required:
-      - grant
-      - destinationToken
-      - kind
-      - content
+        - grant
+        - destinationToken
+        - kind
+        - content
       title: PushRequest
     PushResponse:
       properties:
         result:
           type: string
           enum:
-          - accepted
-          - invalidDestination
-          - retryable
-          - rejected
+            - accepted
+            - invalidDestination
+            - retryable
+            - rejected
           title: Result
         apnsId:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: "null"
           title: Apnsid
         detail:
           anyOf:
-          - type: string
-          - type: 'null'
+            - type: string
+            - type: "null"
           title: Detail
       type: object
       required:
-      - result
+        - result
       title: PushResponse
     RegisterRequest:
       properties:
@@ -682,15 +683,15 @@ components:
           title: App
         callback:
           anyOf:
-          - type: string
-            maxLength: 2048
-          - type: 'null'
+            - type: string
+              maxLength: 2048
+            - type: "null"
           title: Callback
       additionalProperties: false
       type: object
       required:
-      - id
-      - app
+        - id
+        - app
       title: RegisterRequest
     RegisterResponse:
       properties:
@@ -716,12 +717,12 @@ components:
           title: Expires At
       type: object
       required:
-      - tenant
-      - app
-      - token
-      - quota
-      - registered_at
-      - expires_at
+        - tenant
+        - app
+        - token
+        - quota
+        - registered_at
+        - expires_at
       title: RegisterResponse
     RevokeRequest:
       properties:
@@ -733,7 +734,7 @@ components:
       additionalProperties: false
       type: object
       required:
-      - grant
+        - grant
       title: RevokeRequest
     RevokeResponse:
       properties:
@@ -742,15 +743,15 @@ components:
           title: Revoked
       type: object
       required:
-      - revoked
+        - revoked
       title: RevokeResponse
     ValidationError:
       properties:
         loc:
           items:
             anyOf:
-            - type: string
-            - type: integer
+              - type: string
+              - type: integer
           type: array
           title: Location
         msg:
@@ -766,7 +767,7 @@ components:
           title: Context
       type: object
       required:
-      - loc
-      - msg
-      - type
+        - loc
+        - msg
+        - type
       title: ValidationError

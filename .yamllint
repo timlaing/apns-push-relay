@@ -1,0 +1,17 @@
+extends: default
+
+rules:
+  document-start: disable
+  new-line-at-end-of-file: disable
+  line-length: disable
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+  comments:
+    min-spaces-from-content: 1
+  truthy:
+    # GitHub Actions' `on:` key is a YAML 1.1 truthy word — check values, not keys.
+    check-keys: false
+
+ignore-from-file: .gitignore
