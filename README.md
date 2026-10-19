@@ -1,5 +1,14 @@
 # apns-push-relay
 
+[![Build Status](https://github.com/timlaing/apns-push-relay/actions/workflows/ci.yml/badge.svg)](https://github.com/timlaing/apns-push-relay/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/timlaing/apns-push-relay/actions/workflows/codeql.yml/badge.svg)](https://github.com/timlaing/apns-push-relay/actions/workflows/codeql.yml)
+[![GitHub stars](https://img.shields.io/github/stars/timlaing/apns-push-relay.svg)](https://github.com/timlaing/apns-push-relay/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/timlaing/apns-push-relay.svg)](https://github.com/timlaing/apns-push-relay/issues)
+[![GitHub license](https://img.shields.io/github/license/timlaing/apns-push-relay.svg)](LICENSE)
+
+[![Coverage](https://img.shields.io/badge/coverage-%3E90%25%20line%20%2F%20100%25%20branch-brightgreen)](CONTRIBUTING.md#coverage-policy)
+[![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+
 A generic, self-hostable web API that sends **APNs pushes on behalf of your
 backends** — using operator-held `.p8` keys, with tenant backends
 authenticated by token + Ed25519 request signing, destination-bound grants,
