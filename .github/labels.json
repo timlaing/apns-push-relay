@@ -1,0 +1,152 @@
+[
+  {
+    "name": "abuse",
+    "color": "D93F0B",
+    "description": "Abuse reporting, rate limiting and enforcement policy"
+  },
+  {
+    "name": "api",
+    "color": "006B75",
+    "description": "FastAPI service, request/response handling and endpoints"
+  },
+  {
+    "name": "apns",
+    "color": "5319E7",
+    "description": "APNs connection, push delivery and remote commands"
+  },
+  {
+    "name": "bug",
+    "color": "d73a4a",
+    "description": "Something isn't working"
+  },
+  {
+    "name": "bugfix",
+    "color": "89F4D5",
+    "description": ""
+  },
+  {
+    "name": "cli",
+    "color": "8250df",
+    "description": "relay command-line interface (doctor, status, renew)"
+  },
+  {
+    "name": "containers",
+    "color": "0DB7ED",
+    "description": "Container builds, images and runtime"
+  },
+  {
+    "name": "dependencies",
+    "color": "0366d6",
+    "description": "Pull requests that update a dependency file"
+  },
+  {
+    "name": "deployment",
+    "color": "0052CC",
+    "description": "Docker Compose, nginx, certbot and GHCR publishing"
+  },
+  {
+    "name": "documentation",
+    "color": "0075ca",
+    "description": "Improvements or additions to documentation"
+  },
+  {
+    "name": "duplicate",
+    "color": "cfd3d7",
+    "description": "This issue or pull request already exists"
+  },
+  {
+    "name": "enrollment",
+    "color": "2EA44F",
+    "description": "Device/app registration and enrollment flows"
+  },
+  {
+    "name": "enhancement",
+    "color": "a2eeef",
+    "description": "New feature or request"
+  },
+  {
+    "name": "github_actions",
+    "color": "000000",
+    "description": "Pull requests that update GitHub Actions code"
+  },
+  {
+    "name": "good first issue",
+    "color": "7057ff",
+    "description": "Good for newcomers"
+  },
+  {
+    "name": "help wanted",
+    "color": "008672",
+    "description": "Extra attention is needed"
+  },
+  {
+    "name": "invalid",
+    "color": "e4e669",
+    "description": "This doesn't seem right"
+  },
+  {
+    "name": "maintenance",
+    "color": "C5DEF5",
+    "description": "Tooling, CI and repository upkeep"
+  },
+  {
+    "name": "major",
+    "color": "b60205",
+    "description": "Breaking change requiring a major release"
+  },
+  {
+    "name": "metrics",
+    "color": "FBCA04",
+    "description": "Delivery counters, status snapshots and observability"
+  },
+  {
+    "name": "needs-triage",
+    "color": "0e8a16",
+    "description": "Issue needs initial triage"
+  },
+  {
+    "name": "pinned",
+    "color": "1d76db",
+    "description": "Important issue, pinned"
+  },
+  {
+    "name": "privacy",
+    "color": "555555",
+    "description": "Data handling, retention and what the relay never sees"
+  },
+  {
+    "name": "python",
+    "color": "2b67c6",
+    "description": "Pull requests that update python code"
+  },
+  {
+    "name": "question",
+    "color": "d876e3",
+    "description": "Further information is requested"
+  },
+  {
+    "name": "roadmap",
+    "color": "0052cc",
+    "description": "Planned on roadmap"
+  },
+  {
+    "name": "security",
+    "color": "b60205",
+    "description": "Security related"
+  },
+  {
+    "name": "skip-changelog",
+    "color": "24292f",
+    "description": "Exclude this PR from release notes"
+  },
+  {
+    "name": "stale",
+    "color": "ededed",
+    "description": ""
+  },
+  {
+    "name": "wontfix",
+    "color": "ffffff",
+    "description": "This will not be worked on"
+  }
+]

@@ -1,0 +1,46 @@
+# Deployment — Docker Compose
+
+nginx (TLS, 16k body cap, per-IP rate limit) + certbot (Let's Encrypt) +
+relay (FastAPI/uvicorn, internal network only). See `PLAN.md` §6.
+
+## Prerequisites
+
+- A VPS with Docker and the Compose plugin.
+- `API_DOMAIN` **A record** → the VPS (port 80 must be reachable for the
+  ACME webroot challenge). `DOCS_DOMAIN` **CNAME** → your docs site.
+- APNs `.p8` key(s) from the Apple Developer portal — keys stay on the host,
+  never in git or the image.
+
+## Steps
+
+```sh
+cd deploy
+cp .env.example .env               # fill in: tokens, email, domains
+cp config.yaml.example config.yaml # edit: apps, domains
+mkdir -p keys/opencode
+# drop the .p8 key(s) in, e.g. keys/opencode/AuthKey_XXXXXXXXXX.p8
+# chmod 600 keys/opencode/*.p8
+openssl genpkey -algorithm ed25519 -out keys/issuer.pem
+docker compose up -d
+```
+
+On first start nginx serves a self-signed placeholder while certbot issues
+the Let's Encrypt certificate for `API_DOMAIN`; once issued, nginx serves
+the real certificate. Renewal is fully automatic — certbot re-checks every
+12 hours and nginx reloads itself when the certificate file changes (mtime
+watcher), so the two containers never touch each other's runtime.
+
+Check status: `docker compose ps`, `docker compose logs -f certbot nginx`.
+
+## Operations
+
+- **State** lives on the `relay-data` volume (`relay.db`, SQLite WAL) — the
+  only backup target. Config and keys live on the host, outside the
+  container lifecycle.
+- **CLI**: run inside the container —
+  `docker compose exec relay relay status` (also `relay doctor`,
+  `relay app list`, `relay tenant list`, …).
+- **`/admin` is never proxied** through nginx (internal network only); reach
+  the admin API via the CLI above (`docker compose exec`).
+- **Onboard an app**: drop its `.p8` in `keys/`, add an `apps:` entry to
+  `config.yaml`, `docker compose restart relay`.

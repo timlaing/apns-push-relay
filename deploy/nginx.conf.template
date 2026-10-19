@@ -1,0 +1,78 @@
+# Rendered by the nginx image's envsubst helper at container start (invoked
+# from nginx-entrypoint.sh, since the compose `command` bypasses the default
+# entrypoint). envsubst substitutes ONLY variables defined in the container
+# environment (${API_DOMAIN}, ${DOCS_DOMAIN}); nginx runtime variables such
+# as $host, $request_uri and $binary_remote_addr survive untouched.
+#
+# /admin is deliberately never proxied — the admin API is internal-network
+# only (PLAN §3); /docs and /openapi.json live on the docs site, not here.
+
+limit_req_zone $binary_remote_addr zone=relaylimit:10m rate=30r/s;
+
+server {
+    listen 80;
+    server_name _;
+    server_tokens off;
+
+    # ACME webroot challenge for certbot.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://${API_DOMAIN}$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on; # nginx >= 1.25.1 syntax; `listen ... http2` is deprecated
+    server_name ${API_DOMAIN};
+    server_tokens off;
+
+    # Placeholder or live certificate at the same path — nginx-entrypoint.sh
+    # self-signs the placeholder; certbot replaces it atomically.
+    ssl_certificate     /etc/letsencrypt/live/${API_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${API_DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
+
+    client_max_body_size 16k;
+
+    # Internal-only routes: 404 at the public edge; use
+    # `docker compose exec relay relay …` instead.
+    location /admin { return 404; }
+    location /docs { return 404; }
+    location /openapi.json { return 404; }
+
+    # The relay trusts X-Forwarded-For for per-IP rate limiting because it is
+    # never exposed beyond this proxy.
+    location /v1/ {
+        limit_req zone=relaylimit burst=60 nodelay;
+        proxy_pass http://relay:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /health {
+        proxy_pass http://relay:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /metrics {
+        proxy_pass http://relay:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # API root is a JSON pointer to the docs site (landing lives on GitHub
+    # Pages); ${DOCS_DOMAIN} is substituted at render time.
+    location / {
+        default_type application/json;
+        return 200 '{"docs": "https://${DOCS_DOMAIN}/"}';
+    }
+}

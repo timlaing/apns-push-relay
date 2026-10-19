@@ -1,2 +1,28 @@
 # OpenCode session/state files
 .opencode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+.coverage
+.coverage.*
+coverage.json
+coverage.xml
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets and instance state — never commit
+keys/
+*.p8
+.env
+relay.db
+relay.db-*
+config.yaml
+
+# Build/site output
+site/
