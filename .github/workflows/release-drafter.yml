@@ -2,10 +2,14 @@ name: Release Drafter
 on:
   push:
     branches: [main]
+  pull_request_target:
+    types: [opened, reopened, synchronize]
   workflow_dispatch:
 permissions:
   contents: write
-  pull-requests: read
+  # The autolabeler needs to read and write PR labels; it runs on
+  # pull_request_target (metadata only — no PR code is checked out here).
+  pull-requests: write
 concurrency:
   group: release-drafter
   cancel-in-progress: false

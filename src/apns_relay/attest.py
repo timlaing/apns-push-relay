@@ -16,6 +16,7 @@ by the operator (``attest_root_cert``), never hardcoded.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import itertools
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -24,6 +25,7 @@ from pathlib import Path
 import cbor2
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
 
@@ -32,6 +34,16 @@ class AttestError(ValueError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+APPLE_ATTEST_NONCE_OID = x509.ObjectIdentifier("1.2.840.113635.100.8.2")
+
+# Apple pins the AAGUID per App Attest environment ("Validating apps that
+# connect to your server", attestation step 8).
+AAGUID_BY_ATTEST_ENV = {
+    "development": b"appattestdevelop",
+    "production": b"appattest" + b"\x00" * 7,
+}
 
 
 @dataclass(frozen=True)
@@ -117,19 +129,74 @@ def _extract_credential(auth_data: bytes) -> AttestedCredential:
     return AttestedCredential(public_key=pub, aaguid=aaguid, credential_id=cred_id)
 
 
+def _verify_binding(
+    leaf: x509.Certificate,
+    cred: AttestedCredential,
+    auth_data: bytes,
+    nonce: bytes,
+    server_challenge: bytes,
+) -> None:
+    """Bind the Apple-signed leaf certificate to the authData.
+
+    authData is not covered by any signature in the attestation object, so the
+    chain alone proves nothing about it. Apple's verification steps 2-5 and 7
+    ("Validating apps that connect to your server") create the binding:
+    reconstruct the single-use nonce from authData and the challenge, compare
+    it against the nonce extension inside the leaf certificate, and require
+    the credential ID to be the SHA-256 hash of the attested public key in
+    X9.62 uncompressed point form. Without these, a replayed genuine chain
+    could be paired with forged authData carrying an attacker's own key.
+    """
+    client_data_hash = hashlib.sha256(nonce + server_challenge).digest()
+    expected_nonce = hashlib.sha256(auth_data + client_data_hash).digest()
+    try:
+        extension = leaf.extensions.get_extension_for_oid(APPLE_ATTEST_NONCE_OID)
+    except x509.ExtensionNotFound:
+        raise AttestError("nonce_extension_missing") from None
+    # The extension value is a DER SEQUENCE { OCTET STRING (32) }: a 4-byte
+    # header (30 22 04 20) followed by the 32-byte digest.
+    raw = extension.value.value
+    if len(raw) != 36 or raw[:4] != b"\x30\x22\x04\x20":
+        raise AttestError("attestation_nonce_mismatch")
+    if not hmac.compare_digest(raw[4:], expected_nonce):
+        raise AttestError("attestation_nonce_mismatch")
+    leaf_public = leaf.public_key()
+    if not isinstance(leaf_public, EllipticCurvePublicKey):
+        raise AttestError("bad_chain_key")
+    leaf_point = leaf_public.public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    )
+    cose_point = cred.public_key.public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    )
+    if not hmac.compare_digest(hashlib.sha256(leaf_point).digest(), cred.credential_id):
+        raise AttestError("credential_id_mismatch")
+    # credentialId is defined as a hash of the attested key pair's public key,
+    # so the COSE key in authData must hash to the same value.
+    if not hmac.compare_digest(hashlib.sha256(cose_point).digest(), cred.credential_id):
+        raise AttestError("credential_key_mismatch")
+    # Attestation authData carries counter 0 (step 7); counters advance only
+    # in assertions.
+    if int.from_bytes(auth_data[33:37], "big") != 0:
+        raise AttestError("counter_nonzero")
+
+
 def verify_attestation(
     attestation_b64: bytes,
     *,
     root: x509.Certificate,
     expected_rp_id: str,
     expected_aaguid: bytes | None,
+    nonce: bytes,
+    server_challenge: bytes,
     now: datetime | None = None,
 ) -> AttestedCredential:
     """Verify an attestation object and return the credential public key.
 
     ``expected_rp_id`` is the App's bundle ID. ``expected_aaguid`` pins the
-    Apple AAGUID when known (None skips the pin — used until the constant is
-    confirmed against a physical device in M4).
+    Apple AAGUID for the App's attest environment (``None`` skips the pin).
+    ``nonce`` and ``server_challenge`` are the single-use pair pushed to the
+    device — they are what the leaf certificate's nonce extension binds.
     """
     current = now or datetime.now(UTC)
     try:
@@ -148,8 +215,9 @@ def verify_attestation(
     x5c = att_stmt.get("x5c")
     if not isinstance(x5c, list):
         raise AttestError("missing_x5c")
-    _verify_chain(x5c, root, current)
+    leaf = _verify_chain(x5c, root, current)[0]
     cred = _extract_credential(auth_data)
+    _verify_binding(leaf, cred, auth_data, nonce, server_challenge)
     if expected_aaguid is not None and cred.aaguid != expected_aaguid:
         raise AttestError("aaguid_mismatch")
     return cred
@@ -161,12 +229,16 @@ def verify_assertion(
     credential: AttestedCredential,
     nonce: bytes,
     server_challenge: bytes,
+    expected_rp_id: str,
 ) -> bytes:
     """Verify an assertion over SHA256(nonce ‖ serverChallenge). Returns counter.
 
     The nonce is the single-use value pushed to the device; binding it into the
     signed data proves the signer received the challenge push (token
-    possession). Returns the authenticator counter for replay resistance.
+    possession). The assertion's authData rpIdHash is re-checked against the
+    App ID (Apple's assertion step: "validate the hash to ensure the assertion
+    is from your genuine app"). Returns the authenticator counter for replay
+    resistance.
     """
     try:
         obj = cbor2.loads(assertion_b64)
@@ -179,6 +251,8 @@ def verify_assertion(
         raise AttestError("malformed_assertion")
     if len(auth_data) < 37:
         raise AttestError("auth_data_short")
+    if hashlib.sha256(expected_rp_id.encode()).digest() != auth_data[:32]:
+        raise AttestError("app_id_mismatch")
     client_data_hash = hashlib.sha256(nonce + server_challenge).digest()
     message = auth_data + client_data_hash
     try:

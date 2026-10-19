@@ -27,6 +27,8 @@ def test_alert_build() -> None:
 
 
 def test_alert_all_fields() -> None:
+    # Text goes into aps.alert; category/thread/sound are emitted at the aps
+    # level under their APNs wire names (thread → thread-id).
     alert = {
         "title": "t",
         "subtitle": "s",
@@ -36,7 +38,17 @@ def test_alert_all_fields() -> None:
         "sound": "default",
     }
     payload = build_payload("alert", {"alert": alert}, CAPS)
-    assert payload["aps"]["alert"] == alert
+    assert payload == {
+        "aps": {
+            "alert": {"title": "t", "subtitle": "s", "body": "b"},
+            "category": "c",
+            "thread-id": "th",
+            "sound": "default",
+        }
+    }
+
+
+APNS_APS_KEY = {"category": "category", "thread": "thread-id", "sound": "sound"}
 
 
 @pytest.mark.parametrize(
@@ -44,11 +56,37 @@ def test_alert_all_fields() -> None:
     [("title", 64), ("subtitle", 64), ("body", 200), ("category", 32), ("thread", 64)],
 )
 def test_alert_field_caps(field: str, limit: int) -> None:
-    ok = {field: "x" * limit}
-    assert build_payload("alert", {"alert": ok}, CAPS)["aps"]["alert"] == ok
+    value = "x" * limit
+    aps = build_payload("alert", {"alert": {field: value}}, CAPS)["aps"]
+    if field in ("title", "subtitle", "body"):
+        assert aps["alert"][field] == value
+    else:
+        assert aps[APNS_APS_KEY[field]] == value
+        assert "alert" not in aps
     with pytest.raises(PayloadError) as exc:
         build_payload("alert", {"alert": {field: "x" * (limit + 1)}}, CAPS)
     assert exc.value.code == f"{field}_too_long"
+
+
+def test_alert_category_only_has_no_alert_key() -> None:
+    # A content.alert with only category/thread/sound produces no aps.alert
+    # key at all — still a valid, non-empty payload.
+    assert build_payload("alert", {"alert": {"category": "c"}}, CAPS) == {"aps": {"category": "c"}}
+
+
+def test_alert_thread_maps_to_thread_id() -> None:
+    assert build_payload("alert", {"alert": {"thread": "th"}}, CAPS) == {"aps": {"thread-id": "th"}}
+
+
+def test_alert_sound_at_aps_level() -> None:
+    assert build_payload("alert", {"alert": {"sound": "default"}}, CAPS) == {
+        "aps": {"sound": "default"}
+    }
+
+
+def test_alert_text_plus_category_both_keys() -> None:
+    payload = build_payload("alert", {"alert": {"body": "b", "category": "c"}}, CAPS)
+    assert payload == {"aps": {"alert": {"body": "b"}, "category": "c"}}
 
 
 def test_alert_sound_capped_by_category() -> None:
@@ -156,9 +194,20 @@ def test_background_json_compact_encoding() -> None:
 # -- liveActivity ----------------------------------------------------------------
 
 
-def test_live_activity_start_minimal() -> None:
-    payload = build_payload("liveActivity", {"liveActivity": {"event": "start"}}, CAPS)
-    assert payload == {"aps": {"event": "start"}}
+def test_live_activity_update_minimal() -> None:
+    payload = build_payload(
+        "liveActivity", {"liveActivity": {"event": "update", "timestamp": 1}}, CAPS
+    )
+    assert payload == {"aps": {"event": "update", "timestamp": 1}}
+
+
+def test_live_activity_push_to_start_rejected() -> None:
+    # Push-to-start is deferred (PLAN §1): it needs attributes-type/attributes,
+    # which the structured content does not carry — reject instead of sending
+    # a push APNs would drop.
+    with pytest.raises(PayloadError) as exc:
+        build_payload("liveActivity", {"liveActivity": {"event": "start", "timestamp": 1}}, CAPS)
+    assert exc.value.code == "invalid_payload"
 
 
 def test_live_activity_full() -> None:
@@ -170,27 +219,31 @@ def test_live_activity_full() -> None:
         "dismissalDate": 1_800_007_200,
     }
     payload = build_payload("liveActivity", {"liveActivity": inner}, CAPS)
+    # Wire keeps camelCase; ActivityKit reads hyphenated aps keys — the relay
+    # translates, never copies.
     assert payload == {
         "aps": {
             "event": "update",
             "timestamp": 1_800_000_000,
-            "state": {"k": "v"},
-            "staleDate": 1_800_003_600,
-            "dismissalDate": 1_800_007_200,
+            "content-state": {"k": "v"},
+            "stale-date": 1_800_003_600,
+            "dismissal-date": 1_800_007_200,
         }
     }
 
 
-@pytest.mark.parametrize("event", ["start", "update", "end"])
+@pytest.mark.parametrize("event", ["update", "end"])
 def test_live_activity_events(event: str) -> None:
-    payload = build_payload("liveActivity", {"liveActivity": {"event": event}}, CAPS)
+    payload = build_payload(
+        "liveActivity", {"liveActivity": {"event": event, "timestamp": 1}}, CAPS
+    )
     assert payload["aps"]["event"] == event
 
 
 @pytest.mark.parametrize("event", ["begin", 5, None])
 def test_live_activity_invalid_event(event: Any) -> None:
     with pytest.raises(PayloadError) as exc:
-        build_payload("liveActivity", {"liveActivity": {"event": event}}, CAPS)
+        build_payload("liveActivity", {"liveActivity": {"event": event, "timestamp": 1}}, CAPS)
     assert exc.value.code == "invalid_payload"
 
 
@@ -200,18 +253,29 @@ def test_live_activity_missing_event() -> None:
     assert exc.value.code == "invalid_payload"
 
 
+def test_live_activity_missing_timestamp() -> None:
+    with pytest.raises(PayloadError) as exc:
+        build_payload("liveActivity", {"liveActivity": {"event": "update"}}, CAPS)
+    assert exc.value.code == "invalid_payload"
+
+
 @pytest.mark.parametrize("field", ["timestamp", "staleDate", "dismissalDate"])
 @pytest.mark.parametrize("bad", ["1", 1.5, True, None])
 def test_live_activity_int_fields(field: str, bad: Any) -> None:
+    inner: dict[str, Any] = {"event": "update", "timestamp": 1, field: bad}
     with pytest.raises(PayloadError) as exc:
-        build_payload("liveActivity", {"liveActivity": {"event": "update", field: bad}}, CAPS)
+        build_payload("liveActivity", {"liveActivity": inner}, CAPS)
     assert exc.value.code == "invalid_payload"
 
 
 @pytest.mark.parametrize("bad", ["state", 5, None])
 def test_live_activity_state_wrong_type(bad: Any) -> None:
     with pytest.raises(PayloadError) as exc:
-        build_payload("liveActivity", {"liveActivity": {"event": "update", "state": bad}}, CAPS)
+        build_payload(
+            "liveActivity",
+            {"liveActivity": {"event": "update", "timestamp": 1, "state": bad}},
+            CAPS,
+        )
     assert exc.value.code == "invalid_payload"
 
 
@@ -219,7 +283,7 @@ def test_live_activity_state_over_cap() -> None:
     with pytest.raises(PayloadError) as exc:
         build_payload(
             "liveActivity",
-            {"liveActivity": {"event": "update", "state": {"k": "x" * 100}}},
+            {"liveActivity": {"event": "update", "timestamp": 1, "state": {"k": "x" * 100}}},
             CAPS,
         )
     assert exc.value.code == "background_too_long"

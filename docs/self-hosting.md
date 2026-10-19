@@ -7,8 +7,11 @@ The relay ships as a Docker Compose stack: **nginx** (TLS + rate limits),
 
 - A host with a public IP, ports 80/443 open, and DNS `A`/`AAAA` records
   for your API and docs domains.
-- Apple side: an [App Store Connect API key](https://developer.apple.com/documentation/appstoreconnectapi)
-  (`.p8`, Key ID, Team ID) per App you relay for, plus the App Attestation
+- Apple side: an [APNs authentication key](https://developer.apple.com/documentation/usernotifications/setting-up-a-remote-notification-server/establishing-a-token-based-connection-to-apns)
+  (`.p8`, Key ID, Team ID) per App you relay for — created under
+  Certificates, Identifiers & Profiles → Keys with the _Apple Push
+  Notifications service (APNs)_ capability enabled (an App Store Connect API
+  key is a different thing and APNs rejects it) — plus the App Attestation
   root certificates (see below).
 - Docker with the Compose plugin.
 
@@ -18,7 +21,7 @@ The relay ships as a Docker Compose stack: **nginx** (TLS + rate limits),
 git clone https://github.com/timlaing/apns-push-relay.git
 cd apns-push-relay
 cp deploy/config.yaml.example deploy/config.yaml
-cp deploy/.env.example .env
+cp deploy/.env.example deploy/.env
 ```
 
 **`.env`** — two secrets, both ≥32 characters, never committed:

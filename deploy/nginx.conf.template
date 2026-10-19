@@ -30,10 +30,11 @@ server {
     server_name ${API_DOMAIN};
     server_tokens off;
 
-    # Placeholder or live certificate at the same path — nginx-entrypoint.sh
-    # self-signs the placeholder; certbot replaces it atomically.
-    ssl_certificate     /etc/letsencrypt/live/${API_DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${API_DOMAIN}/privkey.pem;
+    # Served from /etc/nginx/certs — a self-signed placeholder until certbot
+    # issues, then a symlink to the Let's Encrypt files (nginx-entrypoint.sh;
+    # the certbot-conf volume itself is mounted read-only here).
+    ssl_certificate     /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_session_cache shared:SSL:10m;
 

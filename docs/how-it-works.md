@@ -45,11 +45,11 @@ codes with stable `error` strings. See the [API reference](api/openapi.md).
 
 ## The three push kinds
 
-| `kind`         | APNs push type | Priority | Topic                             | Use                                     |
-| -------------- | -------------- | -------- | --------------------------------- | --------------------------------------- |
-| `alert`        | `alert`        | 10       | bundle ID                         | User-visible notifications              |
-| `background`   | `background`   | 5        | bundle ID                         | Silent refresh (`content-available: 1`) |
-| `liveActivity` | `liveactivity` | 5        | `bundleID.push-type.liveactivity` | Live Activity start/update/end          |
+| `kind`         | APNs push type | Priority | Topic                             | Use                                       |
+| -------------- | -------------- | -------- | --------------------------------- | ----------------------------------------- |
+| `alert`        | `alert`        | 10       | bundle ID                         | User-visible notifications                |
+| `background`   | `background`   | 5        | bundle ID                         | Silent refresh (`content-available: 1`)   |
+| `liveActivity` | `liveactivity` | 5        | `bundleID.push-type.liveactivity` | Live Activity update/end (start deferred) |
 
 Content is **keyed by kind** — you send exactly one section
 (`content.alert`, `content.background`, or `content.liveActivity`) plus an

@@ -6,9 +6,8 @@ FROM python:3.13-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # README.md is referenced by pyproject.toml (readme=) and must be in the
-# build context. No lockfile is required — the project installs straight
-# from pyproject (switch to `uv sync --frozen --no-dev` once uv.lock is
-# committed and kept fresh, for reproducible builds).
+# build context. uv.lock is committed: dependencies install from the lock
+# (reproducible builds), then the project itself on top.
 ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     UV_NO_CACHE=1 \
@@ -16,11 +15,14 @@ ENV PYTHONUNBUFFERED=1 \
     RELAY_DATA_DIR=/var/lib/apns-relay
 
 WORKDIR /app
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md uv.lock ./
 COPY src ./src
 COPY deploy/relay-entrypoint.sh /usr/local/bin/relay-entrypoint
 RUN chmod 0755 /usr/local/bin/relay-entrypoint
-RUN uv pip install --system .
+RUN uv export --frozen --no-dev --no-emit-project --no-hashes \
+        -o /tmp/requirements.txt \
+    && uv pip install --system -r /tmp/requirements.txt \
+    && uv pip install --system --no-deps .
 
 # Non-root runtime user; the data dir (SQLite db, keys at rest) lives on a
 # named volume mounted at /var/lib/apns-relay.

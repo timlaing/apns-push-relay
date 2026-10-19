@@ -114,7 +114,14 @@ def test_live_activity_topic_and_type(env) -> None:
         push_payload(
             enrolled,
             kind="liveActivity",
-            content={"liveActivity": {"event": "update", "timestamp": 1_700_000_000}},
+            content={
+                "liveActivity": {
+                    "event": "update",
+                    "timestamp": 1_700_000_000,
+                    "state": {"progress": 0.5},
+                    "staleDate": 1_700_003_600,
+                }
+            },
         ),
         enrolled.token,
         enrolled.private_key,
@@ -124,7 +131,12 @@ def test_live_activity_topic_and_type(env) -> None:
     assert call["headers"]["apns-topic"] == f"{BUNDLE_ID}.push-type.liveactivity"
     assert call["headers"]["apns-push-type"] == "liveactivity"
     assert call["headers"]["apns-priority"] == "5"
-    assert call["body"]["aps"] == {"event": "update", "timestamp": 1_700_000_000}
+    assert call["body"]["aps"] == {
+        "event": "update",
+        "timestamp": 1_700_000_000,
+        "content-state": {"progress": 0.5},
+        "stale-date": 1_700_003_600,
+    }
 
 
 def test_background_push(env) -> None:
@@ -461,10 +473,12 @@ def test_push_background_missing_section(env) -> None:
     [
         {},  # no event
         {"event": "bogus"},
+        {"event": "start", "timestamp": 1_700_000_000},  # push-to-start deferred (PLAN §1)
+        {"event": "update"},  # timestamp now required
         {"event": "update", "timestamp": "now"},
-        {"event": "update", "staleDate": True},
-        {"event": "update", "dismissalDate": "1"},
-        {"event": "update", "state": "not-structured"},
+        {"event": "update", "timestamp": 1, "staleDate": True},
+        {"event": "update", "timestamp": 1, "dismissalDate": "1"},
+        {"event": "update", "timestamp": 1, "state": "not-structured"},
     ],
 )
 def test_push_live_activity_invalid_content(env, live_content: dict) -> None:
@@ -481,7 +495,13 @@ def test_push_live_activity_state_too_long(env) -> None:
         env,
         enrolled,
         kind="liveActivity",
-        content={"liveActivity": {"event": "update", "state": {"blob": "x" * 600}}},
+        content={
+            "liveActivity": {
+                "event": "update",
+                "timestamp": 1_700_000_000,
+                "state": {"blob": "x" * 600},
+            }
+        },
     )
     assert response.json() == {"error": "background_too_long"}
 
