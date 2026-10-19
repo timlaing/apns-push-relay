@@ -24,12 +24,21 @@ cp deploy/config.yaml.example deploy/config.yaml
 cp deploy/.env.example deploy/.env
 ```
 
-**`.env`** — two secrets, both ≥32 characters, never committed:
+**`.env`** — your domains and two secrets; nothing domain-related is
+hardcoded anywhere. The values in `.env.example` are placeholders — replace
+them. Secrets must be ≥32 characters; `.env` is gitignored:
 
 ```sh
+API_DOMAIN=…            # this instance's API hostname (A record → VPS)
+DOCS_DOMAIN=…           # docs hostname (bare hostname; docs serve from the
+                        # GitHub Pages project URL until a CNAME exists)
+LETSENCRYPT_EMAIL=…     # certbot sends expiry notices here
 RELAY_ADMIN_TOKEN=…     # powers `relay` / the admin API
 RELAY_MASTER_SECRET=…   # HMAC key for blind destination indexes
 ```
+
+`.env` drives nginx and certbot; the `server:` block in `config.yaml` below
+mirrors the same two domains.
 
 **`deploy/config.yaml`** — everything structural lives here; nothing is
 hardcoded in the code. Relative paths (`keys/…`) resolve against the config
@@ -39,7 +48,7 @@ container (compose mounts `./keys` there):
 ```yaml
 server:
   api_domain: api.push.example.org # this instance's API
-  docs_domain: push.example.org # GitHub Pages CNAME
+  docs_domain: push.example.org # docs host (project URL until a CNAME exists)
 
 enrollment:
   grant_issuer_key: keys/issuer.pem # Ed25519 (see below)

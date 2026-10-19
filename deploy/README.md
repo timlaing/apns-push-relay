@@ -7,7 +7,9 @@ relay (FastAPI/uvicorn, internal network only). See `PLAN.md` §6.
 
 - A VPS with Docker and the Compose plugin.
 - `API_DOMAIN` **A record** → the VPS (port 80 must be reachable for the
-  ACME webroot challenge). `DOCS_DOMAIN` **CNAME** → your docs site.
+  ACME webroot challenge). `DOCS_DOMAIN` = your docs site host (custom domain
+  once CNAME'd; the site serves from the GitHub Pages project URL until
+  then).
 - APNs `.p8` key(s) from the Apple Developer portal — keys stay on the host,
   never in git or the image.
 

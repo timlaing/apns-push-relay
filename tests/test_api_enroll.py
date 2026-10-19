@@ -545,8 +545,8 @@ def test_finish_tofu_rejects_different_pubkey(env) -> None:
     assert first.status_code == 200, first.text
 
     # enroll/finish is unauthenticated by design: a second finish presenting a
-    # *different* key must not replace the bound one — rotation is
-    # `relay tenant revoke` + re-enroll (spec §2.6).
+    # *different* key must not replace the bound one — revoke is a
+    # revocation control, not a rotation path (spec §2.6).
     begin_body, nonce = begin(env)
     payload = finish_payload(env, begin_body, nonce, pubkey=generate_keypair()[1])
     response = post_finish(env, payload)

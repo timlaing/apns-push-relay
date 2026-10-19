@@ -9,7 +9,7 @@
 server:
   api_domain: api.push.example.org # THIS instance's API domain — set by the
   # operator; no hostname is hardcoded
-  docs_domain: push.example.org # GitHub Pages domain (CNAME in mkdocs)
+  docs_domain: push.example.org # docs host (project URL until a CNAME exists)
   public_scheme: https
 
 enrollment:

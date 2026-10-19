@@ -190,7 +190,8 @@ Verification, all mandatory:
    the tenant has no key; a _different_ key for an already-bound tenant is
    rejected (`invalid_pubkey`) — enroll/finish is unauthenticated by design,
    so key replacement would let anyone holding a stolen token impersonate the
-   tenant. Rotation: `relay tenant revoke` + re-enroll (§2.6).
+   tenant. There is no key-rotation operation in v1 — `relay tenant revoke`
+   is for revocation; a revoked tenant re-registers as a new binding (§2.6).
 
 Failure at any step → `400`, challenge burned (single-use even on failure
 after nonce consumption). Success → challenge row deleted, grant issued.
@@ -312,7 +313,7 @@ or key revocation).
 | A13 | Malicious relay operator (modified build logging tokens in transit) | Tokens never stored by the stock relay — nothing to steal at rest; sealed blob keeps detail blind; honest disclosure (§1); self-hosting removes the party; optional future: verifiable image digests                                                                 |
 | A14 | Enrollment-endpoint DoS                                             | Per-IP rate limits on `enroll/*`, challenge TTL, single-use rows                                                                                                                                                                                                     |
 | A15 | Grant-issuer key compromise                                         | **Single issuer key in v1** (no key-set shipping). Rotation runbook (M8): install new key, restart — all outstanding grants (≤ max 24h TTL) lapse early; tenants re-enroll. `iss` claim present from v1 so a key set can be added later without a grant-format break |
-| A16 | Replace a tenant's signing key via unauthenticated `enroll/finish`  | Signing key is trust-on-first-use (§2.2 step 6): stored only while empty; a different key → `invalid_pubkey`; concurrent first-enroll writes are conditional. Rotation is `relay tenant revoke` + re-enroll                                                          |
+| A16 | Replace a tenant's signing key via unauthenticated `enroll/finish`  | Signing key is trust-on-first-use (§2.2 step 6): stored only while empty; a different key → `invalid_pubkey`; concurrent first-enroll writes are conditional. No key rotation in v1 — `relay tenant revoke` is for revocation, after which the tenant re-registers   |
 
 ### 3.3 Out of scope (v1)
 
@@ -401,8 +402,9 @@ key)` (X9.62 uncompressed), COSE key hash equality, attestation counter 0,
    authenticator data.
 3. **Signing key is trust-on-first-use (§2.2 step 6, threat A16).**
    `enroll/finish` is unauthenticated by design, so a stored `tenantPubkey`
-   can never be replaced through it; rotation goes through `relay tenant
-revoke` + re-enroll.
+   can never be replaced through it. `relay tenant revoke` is a revocation
+   control, not a rotation mechanism — there is no key rotation in v1; a
+   revoked tenant re-registers as a new binding.
 4. **Live Activity events are `update`/`end` only.** Push-to-start requires
    `attributes-type`/`attributes`, which this API does not carry; `start` is
    rejected rather than accepted-and-dropped (PLAN §1 already deferred it).

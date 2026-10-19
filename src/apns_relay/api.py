@@ -392,8 +392,10 @@ def v1_router(state: AppState) -> APIRouter:
         # Trust-on-first-use (spec §2.4): the signing key is set exactly once.
         # enroll/finish is unauthenticated by design (App Attest proves the
         # device), so replacing a stored key here would let anyone holding a
-        # stolen token enroll their own key and impersonate the tenant. Key
-        # rotation is `relay tenant revoke` + re-enroll.
+        # stolen token enroll their own key and impersonate the tenant. There
+        # is no key-rotation operation in v1: `relay tenant revoke` is a
+        # revocation control — afterwards the tenant re-registers as a new
+        # binding.
         if tenant.pubkey and tenant.pubkey != body.tenantPubkey:
             raise BadRequest("invalid_pubkey")
         if not tenant.pubkey and not state.store.set_pubkey(
