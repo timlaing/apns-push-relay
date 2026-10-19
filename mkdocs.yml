@@ -59,7 +59,7 @@ nav:
   - Self-hosting: self-hosting.md
   - API:
       - OpenAPI: api/openapi.md
-      - Enrollment spec (v1.0): api/enrollment-spec.md
+      - Enrollment spec (v1.2): api/enrollment-spec.md
   - Privacy: privacy.md
   - Limits & abuse: limits-and-abuse.md
   - Status: status.md

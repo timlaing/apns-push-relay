@@ -54,6 +54,7 @@ cp deploy/config.yaml.example deploy/config.yaml   # edit: apps, domains
 cp deploy/.env.example deploy/.env                # set API_DOMAIN, RELAY_ADMIN_TOKEN,
                                                   # RELAY_MASTER_SECRET
 # put your .p8 keys somewhere referenced by config.yaml (never committed)
+docker compose -f deploy/docker-compose.yml pull               # published image; skip to build from source
 docker compose -f deploy/docker-compose.yml up -d
 ```
 

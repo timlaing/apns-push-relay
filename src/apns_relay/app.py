@@ -176,12 +176,15 @@ def _assemble(state: AppState) -> FastAPI:
                     await state.sweep_task
             await state.sender.aclose()
 
+    swagger = state.config.server.swagger_ui
     app = FastAPI(
         title="apns-push-relay",
         version="1.0.0",
-        docs_url=None,  # schema ships on the docs site, not the API host
-        redoc_url=None,
-        openapi_url=None,
+        # Interactive API docs are an operator opt-in (server.swagger_ui);
+        # disabled, these routes do not exist at all (404).
+        docs_url="/docs" if swagger else None,
+        redoc_url="/redoc" if swagger else None,
+        openapi_url="/openapi.json" if swagger else None,
         lifespan=lifespan,
     )
     app.state.relay = state

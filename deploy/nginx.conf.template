@@ -5,7 +5,8 @@
 # as $host, $request_uri and $binary_remote_addr survive untouched.
 #
 # /admin is deliberately never proxied — the admin API is internal-network
-# only (PLAN §3); /docs and /openapi.json live on the docs site, not here.
+# only (PLAN §3). /docs, /redoc and /openapi.json ARE proxied, but the relay
+# serves them only when config sets server.swagger_ui: true (404 otherwise).
 
 limit_req_zone $binary_remote_addr zone=relaylimit:10m rate=30r/s;
 
@@ -40,11 +41,37 @@ server {
 
     client_max_body_size 16k;
 
-    # Internal-only routes: 404 at the public edge; use
+    # Internal-only route: 404 at the public edge; use
     # `docker compose exec relay relay …` instead.
     location /admin { return 404; }
-    location /docs { return 404; }
-    location /openapi.json { return 404; }
+
+    # Interactive API docs (Swagger UI / ReDoc / schema). The relay serves
+    # these only when config.yaml sets server.swagger_ui: true, otherwise it
+    # 404s them — the edge behaviour is unchanged for instances that do not
+    # opt in.
+    location /docs {
+        limit_req zone=relaylimit burst=60 nodelay;
+        proxy_pass http://relay:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /redoc {
+        limit_req zone=relaylimit burst=60 nodelay;
+        proxy_pass http://relay:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /openapi.json {
+        limit_req zone=relaylimit burst=60 nodelay;
+        proxy_pass http://relay:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
 
     # The relay trusts X-Forwarded-For for per-IP rate limiting because it is
     # never exposed beyond this proxy.

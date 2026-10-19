@@ -1,7 +1,10 @@
 # Self-hosting
 
-The relay ships as a Docker Compose stack: **nginx** (TLS + rate limits),
-**certbot** (automatic renewal), and the **relay** (FastAPI + SQLite).
+The relay ships as a container image
+(`ghcr.io/timlaing/apns-push-relay`, one tag per release) and runs as a
+Docker Compose stack: **nginx** (TLS + rate limits), **certbot**
+(automatic renewal), and the **relay** (FastAPI + SQLite). Building from
+source is supported, but not required — the image is the primary path.
 
 ## 1. Prerequisites
 
@@ -16,6 +19,9 @@ The relay ships as a Docker Compose stack: **nginx** (TLS + rate limits),
 - Docker with the Compose plugin.
 
 ## 2. Configure
+
+The compose file, nginx template and config examples live in the repo —
+clone it (or copy `deploy/` onto your host):
 
 ```sh
 git clone https://github.com/timlaing/apns-push-relay.git
@@ -99,9 +105,22 @@ fast instead of at the first push.
 
 ## 4. Up, and TLS
 
+Pull the published image and start — no build toolchain needed beyond
+Docker:
+
 ```sh
+docker compose -f deploy/docker-compose.yml pull
 docker compose -f deploy/docker-compose.yml up -d
 ```
+
+!!! tip "Building from source (alternative)"
+To run a modified build — or when no release image exists yet — let
+compose build from the checkout instead (`build:` in
+`docker-compose.yml`; with no local image, `up` builds automatically):
+
+    ```sh
+    docker compose -f deploy/docker-compose.yml up -d --build
+    ```
 
 certbot obtains certificates via the ACME webroot nginx exposes, and
 renews on a timer; nginx reloads after renewal. Verify:
@@ -127,11 +146,21 @@ docker compose exec relay relay metrics             # Prometheus text
 ```
 
 - The admin API listens on the internal network only: **nginx returns 404
-  for `/admin`** (and `/docs`, `/openapi.json`).
+  for `/admin`**.
+- **Interactive API docs**: set `swagger_ui: true` under `server:` in
+  `config.yaml` to serve Swagger UI at `/docs`, ReDoc at `/redoc` and the
+  schema at `/openapi.json` on the API domain (off by default — the
+  published schema lives on the docs site either way).
+- **Tenant credentials are tenant-side**: a tenant rotates its own token
+  and signing key with `POST /v1/rotate` (signed under the current key).
+  Operator kill switches stay `relay tenant revoke` (kill) and
+  `relay tenant reissue` (new token, key untouched).
 - Back up `relay.db` (named volume) — it is the only state; it contains
   digests and blind indexes, never raw tokens or payloads.
 - Upgrades: `git pull && docker compose -f deploy/docker-compose.yml
-build && … up -d` (doctor pre-flight gates the swap).
+pull && … up -d` for the image path (or `… up -d --build` on a source
+  build); `RELAY_TAG=<version>` in `.env` pins a release. Doctor
+  pre-flight gates the swap.
 
 ## App Attest roots
 

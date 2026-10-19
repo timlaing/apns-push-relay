@@ -11,6 +11,9 @@ server:
   # operator; no hostname is hardcoded
   docs_domain: push.example.org # docs host (project URL until a CNAME exists)
   public_scheme: https
+  swagger_ui: false # true → Swagger UI at /docs, ReDoc at /redoc and the
+  # schema at /openapi.json on the API domain (off by default; /admin is
+  # never exposed either way)
 
 enrollment:
   # Ed25519 key that signs grants and challenges:

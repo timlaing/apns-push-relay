@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning].
   under the current binding (proof of possession). Grants bound to the old
   key stop verifying; paired devices re-enroll with the new key (enrollment
   spec §2.7, v1.2 amendment).
+- **Interactive API docs (opt-in):** `server.swagger_ui: true` serves
+  Swagger UI (`/docs`), ReDoc (`/redoc`) and the OpenAPI schema
+  (`/openapi.json`) on the API host; off by default, and `/admin` is
+  never exposed either way.
+- **Container image:** self-hosting pulls the published GHCR image
+  (`ghcr.io/timlaing/apns-push-relay`, one tag per release); building
+  from source remains the compose fallback (`up --build`).
 
 ## [0.1.0] - 2026-10-19
 

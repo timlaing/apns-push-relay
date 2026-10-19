@@ -19,6 +19,9 @@ by `scripts/export_openapi.py` — regenerate it whenever routes change
 - **Error envelope**: `{"error": "<machine-code>", "detail": "<optional>"}`.
 - The admin API (`/admin/*`) is _not_ in this schema — it is internal,
   never proxied by nginx, and authenticated by `RELAY_ADMIN_TOKEN`.
+- **Interactive docs**: an instance can serve this schema as Swagger UI at
+  `/docs` (plus ReDoc at `/redoc` and raw `/openapi.json`) when the
+  operator sets `server.swagger_ui: true` — off by default.
 
 ## Endpoints
 

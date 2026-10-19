@@ -39,11 +39,19 @@ def _location_block(conf: str, header: str) -> str:
 # -- nginx ---------------------------------------------------------------------
 
 
-def test_admin_docs_and_openapi_return_404_at_the_edge() -> None:
+def test_admin_returns_404_at_the_edge() -> None:
+    block = _location_block(_nginx(), "/admin {")
+    assert "return 404" in block
+
+
+def test_swagger_routes_proxy_to_the_relay() -> None:
+    """/docs, /redoc and /openapi.json reach the relay, which serves them
+    only when server.swagger_ui is enabled (404 by default otherwise)."""
     conf = _nginx()
-    for header in ("/admin {", "/docs {", "/openapi.json {"):
+    for header in ("/docs {", "/redoc {", "/openapi.json {"):
         block = _location_block(conf, header)
-        assert "return 404" in block, header
+        assert "proxy_pass http://relay:8000;" in block, header
+        assert "return 404" not in block, header
 
 
 def test_rate_limit_zone_declared_and_applied_to_v1() -> None:
@@ -86,6 +94,14 @@ def test_nginx_publishes_80_and_443_relay_stays_internal() -> None:
     compose = _compose()
     assert {"80:80", "443:443"} <= set(compose["services"]["nginx"]["ports"])
     assert "ports" not in compose["services"]["relay"]
+
+
+def test_relay_service_prefers_the_published_image() -> None:
+    """The published GHCR image is the primary run path; build: stays as the
+    from-source fallback (compose builds when no image is available)."""
+    relay = _compose()["services"]["relay"]
+    assert relay["image"].startswith("ghcr.io/timlaing/apns-push-relay:")
+    assert "build" in relay
 
 
 def test_certbot_present_with_issue_and_renewal_wiring() -> None:
@@ -134,6 +150,7 @@ def test_example_config_loads_structurally() -> None:
     config = load_config(path, admin_token=ADMIN_TOKEN)
     assert config.server.api_domain == "api.push.example.org"
     assert config.server.public_scheme == "https"
+    assert config.server.swagger_ui is False
     assert config.enrollment.challenge_ttl == 600
     assert config.enrollment.grant_issuer_key == path.parent / "keys/issuer.pem"
     assert config.enrollment.attest_root_certs == {}

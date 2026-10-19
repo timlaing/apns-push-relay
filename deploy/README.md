@@ -24,6 +24,7 @@ mkdir -p keys/my-app
 # drop the .p8 key(s) in, e.g. keys/my-app/AuthKey_XXXXXXXXXX.p8
 # chmod 600 keys/my-app/*.p8
 openssl genpkey -algorithm ed25519 -out keys/issuer.pem
+docker compose pull # published image (ghcr.io); skip this line to build from source
 docker compose up -d
 ```
 

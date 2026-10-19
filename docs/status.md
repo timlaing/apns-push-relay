@@ -10,8 +10,9 @@ instance is live.
 | Component            | State         | Notes                                                            |
 | -------------------- | ------------- | ---------------------------------------------------------------- |
 | API (`/health`)      | ✅ shipped    | `{"status": "ok"}` — probe it on your instance                   |
-| Enrollment (spec)    | ✅ v1.0       | Reviewed spec published; physical-device validation pending (M4) |
+| Enrollment (spec)    | ✅ v1.2       | Reviewed spec published; physical-device validation pending (M4) |
 | Register / push      | ✅ shipped    | Contract-tested against the notifications spec                   |
+| Credential rotation  | ✅ shipped    | `POST /v1/rotate` — signed proof-of-possession (§2.7)            |
 | Quotas / denylist    | ✅ shipped    | Per-App, enforced pre-APNs                                       |
 | nginx + certbot      | ✅ shipped    | Compose stack, auto-renew                                        |
 | `relay` CLI          | ✅ shipped    | doctor/status/logs/tenant/denylist/metrics                       |

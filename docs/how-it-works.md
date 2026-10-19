@@ -16,7 +16,8 @@
 ```
 
 - **nginx** terminates TLS, enforces coarse per-IP rate limits, and never
-  proxies `/admin`, `/docs` or `/openapi.json` to the app.
+  proxies `/admin` to the app. `/docs`, `/redoc` and `/openapi.json` are
+  proxied but served only by instances that opt in (`server.swagger_ui`).
 - **The relay app** authenticates, authorizes, quotas, and forwards.
 - **certbot** renews certificates on a timer; nginx reloads.
 - **SQLite (WAL)** holds only blind material: token digests, HMAC'd
@@ -65,10 +66,12 @@ reachable), `POST /v1/enroll/finish` proves the _app_ is genuine via
 over `SHA256(nonce ‖ serverChallenge)`), and the relay returns a
 **destination-bound grant** plus a consent receipt. Renewal
 (`POST /v1/enroll/renew`) re-signs a grant with fresh credentials — no new
-attestation needed. Revocation (`POST /v1/revoke`) denylists the grant's
-`jti` immediately.
+attestation needed. Rotation (`POST /v1/rotate`) replaces a tenant's token
+and signing key as a pair — authorized by a signature under the current
+key — so paired devices re-enroll after a suspected key compromise.
+Revocation (`POST /v1/revoke`) denylists the grant's `jti` immediately.
 
-Full contract: [Enrollment spec v1.0](api/enrollment-spec.md).
+Full contract: [Enrollment spec v1.2](api/enrollment-spec.md).
 
 ## Why grants _and_ signatures?
 

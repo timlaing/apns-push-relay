@@ -72,6 +72,10 @@ services:
       - relay-net
 
   relay:
+    # Published image (GHCR, one tag per v* release; RELAY_TAG pins another).
+    # `docker compose pull` fetches it; when no image is available, compose
+    # builds from the checkout instead (build: below, or `up --build`).
+    image: ghcr.io/timlaing/apns-push-relay:${RELAY_TAG:-0.1.0}
     build:
       context: ..
       dockerfile: deploy/Dockerfile

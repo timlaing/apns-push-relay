@@ -71,6 +71,10 @@ class ServerConfig:
     api_domain: str
     docs_domain: str
     public_scheme: str = "https"
+    # Operator opt-in: serve Swagger UI (/docs), ReDoc (/redoc) and the
+    # OpenAPI schema (/openapi.json) on the API host. Off by default — the
+    # schema ships on the docs site either way; /admin is never exposed.
+    swagger_ui: bool = False
 
     def validate(self) -> None:
         for name, value in (("api_domain", self.api_domain), ("docs_domain", self.docs_domain)):
