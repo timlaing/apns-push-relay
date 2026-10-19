@@ -1,0 +1,53 @@
+# See https://pre-commit.com for more information
+# See https://github.com/j178/prek for the prek runner used by this project
+#
+#   prek install            # install the git hooks once
+#   prek run --all-files    # run everything, as CI's local equivalent does
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: forbid-submodules
+      - id: trailing-whitespace
+      - id: detect-private-key
+      - id: check-docstring-first
+      - id: end-of-file-fixer
+      - id: check-shebang-scripts-are-executable
+      - id: check-added-large-files
+      - id: check-yaml
+        args:
+          - --unsafe
+      - id: check-toml
+      - id: check-json
+      - id: name-tests-test
+        args:
+          - --pytest-test-first
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Keep in step with the ruff pinned in uv.lock.
+    rev: v0.17.1
+    hooks:
+      - id: ruff-check
+        args:
+          - --fix
+      - id: ruff-format
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier
+        entry: npx prettier --write --ignore-unknown
+        language: node
+        types_or:
+          - json
+          - yaml
+          - markdown
+        pass_filenames: true
+      - id: pytest
+        name: PyTest
+        entry: uv run pytest
+        language: system
+        pass_filenames: false
+        stages: [manual]

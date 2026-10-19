@@ -1,5 +1,5 @@
-name-template: 'v$RESOLVED_VERSION'
-tag-template: 'v$RESOLVED_VERSION'
+name-template: "v$RESOLVED_VERSION"
+tag-template: "v$RESOLVED_VERSION"
 filter-by-commitish: true
 commitish: main
 categories:
@@ -46,35 +46,45 @@ categories:
     semver-increment: patch
 autolabeler:
   - label: documentation
-    files: ['**/*.md', 'docs/**']
+    files: ["**/*.md", "docs/**"]
     title: ['/^(docs)(\(.+\))?:/i']
   - label: bug
     title: ['/^(fix)(\(.+\))?:/i', '/^fix\b/i']
-    branch: ['/(^|/)fix[/-]/']
+    branch: ["/(^|/)fix[/-]/"]
   - label: enhancement
     title: ['/^(feat)(\(.+\))?:/i']
-    branch: ['/(^|/)feature[/-]/']
+    branch: ["/(^|/)feature[/-]/"]
   - label: dependencies
     title: ['/^(build|chore)\(deps[^)]*\):/i', '/^bump\b/i']
     branch: ['/^dependabot\//']
   - label: maintenance
-    files: ['.github/workflows/**', '.github/dependabot*']
+    files: [".github/workflows/**", ".github/dependabot*"]
     title: ['/^(ci|chore)(\(.+\))?:/i']
   - label: github_actions
-    files: ['.github/workflows/**']
+    files: [".github/workflows/**"]
   - label: python
-    files: ['src/**/*.py', 'tests/**/*.py', 'scripts/**/*.py']
+    files: ["src/**/*.py", "tests/**/*.py", "scripts/**/*.py"]
   - label: apns
-    files: ['src/apns_relay/apns.py', 'src/apns_relay/attest.py', 'src/apns_relay/signing.py']
+    files:
+      [
+        "src/apns_relay/apns.py",
+        "src/apns_relay/attest.py",
+        "src/apns_relay/signing.py",
+      ]
   - label: cli
-    files: ['src/apns_relay/cli/**']
+    files: ["src/apns_relay/cli/**"]
   - label: api
-    files: ['src/apns_relay/server.py', 'src/apns_relay/api/**', 'src/apns_relay/routes/**']
+    files:
+      [
+        "src/apns_relay/server.py",
+        "src/apns_relay/api/**",
+        "src/apns_relay/routes/**",
+      ]
   - label: containers
-    files: ['**/Dockerfile', '**/.dockerignore', 'deploy/**']
-change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+    files: ["**/Dockerfile", "**/.dockerignore", "deploy/**"]
+change-template: "- $TITLE (#$NUMBER) @$AUTHOR"
 change-title-escapes: '\<*_&'
-no-changes-template: '* No notable changes in this release.'
+no-changes-template: "* No notable changes in this release."
 sort-by: title
 sort-direction: ascending
 template: |
