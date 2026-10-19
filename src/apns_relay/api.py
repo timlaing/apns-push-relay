@@ -25,6 +25,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, Request
 
 from .attest import (
+    AAGUID_BY_ATTEST_ENV,
     AttestError,
     load_attest_root,
     verify_assertion,
@@ -362,7 +363,9 @@ def v1_router(state: AppState) -> APIRouter:
                 attestation_cbor,
                 root=root,
                 expected_rp_id=app.bundle_id,
-                expected_aaguid=None,  # pin once confirmed on device (M4)
+                expected_aaguid=AAGUID_BY_ATTEST_ENV[app.attest_environment],
+                nonce=challenge.nonce.encode(),
+                server_challenge=challenge.server_challenge.encode(),
             )
         except AttestError as exc:
             raise BadRequest(exc.code) from None
@@ -373,6 +376,7 @@ def v1_router(state: AppState) -> APIRouter:
                 credential=credential,
                 nonce=challenge.nonce.encode(),
                 server_challenge=challenge.server_challenge.encode(),
+                expected_rp_id=app.bundle_id,
             )
         except AttestError as exc:
             raise BadRequest(exc.code) from None
@@ -385,7 +389,17 @@ def v1_router(state: AppState) -> APIRouter:
             public_key_from_b64(body.tenantPubkey)
         except ValueError:
             raise BadRequest("invalid_pubkey") from None
-        state.store.set_pubkey(challenge.tenant_id, app.id, body.tenantPubkey)
+        # Trust-on-first-use (spec §2.4): the signing key is set exactly once.
+        # enroll/finish is unauthenticated by design (App Attest proves the
+        # device), so replacing a stored key here would let anyone holding a
+        # stolen token enroll their own key and impersonate the tenant. Key
+        # rotation is `relay tenant revoke` + re-enroll.
+        if tenant.pubkey and tenant.pubkey != body.tenantPubkey:
+            raise BadRequest("invalid_pubkey")
+        if not tenant.pubkey and not state.store.set_pubkey(
+            challenge.tenant_id, app.id, body.tenantPubkey
+        ):
+            raise BadRequest("invalid_pubkey")  # lost a first-enroll race
         grant = issue_grant(
             state.issuer_key,
             state.issuer_id,

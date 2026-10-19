@@ -104,7 +104,16 @@ async def verify_callback(
     own = client is None
     http = client or httpx.AsyncClient(timeout=timeout, verify=_pinned_context(host))
     try:
-        resp = await http.post(str(pinned), json=payload, headers=headers)
+        # The URL host is the pinned IP, but TLS must present the *hostname*:
+        # httpcore uses the sni_hostname extension for both SNI and the
+        # check_hostname verification, so a hostname-issued certificate
+        # validates while the connection still goes to the resolved address.
+        resp = await http.post(
+            str(pinned),
+            json=payload,
+            headers=headers,
+            extensions={"sni_hostname": host},
+        )
     except httpx.HTTPError:
         return False
     finally:

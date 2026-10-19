@@ -9,11 +9,15 @@ import dataclasses
 import hashlib
 import time
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import cbor2
 import pytest
 import relay_client
+from cryptography.hazmat.primitives import serialization
 
+from apns_relay.attest import AAGUID_BY_ATTEST_ENV
 from apns_relay.grants import canonical_claims, issue_grant, sha256_token
 from apns_relay.signing import generate_keypair
 from tests.conftest import (
@@ -24,6 +28,8 @@ from tests.conftest import (
     OTHER_BUNDLE_ID,
     OTHER_TENANT_ID,
     TENANT_ID,
+    _make_cert,
+    _nonce_extension,
     b64,
     do_push,
     enroll,
@@ -76,7 +82,9 @@ def finish_payload(
 ) -> dict:
     if attestation is None:
         root = root or env.roots["production"]
-        attestation, cred_key = mint_attestation(root, rp_id=rp_id)
+        attestation, cred_key = mint_attestation(
+            root, rp_id=rp_id, nonce=nonce, server_challenge=begin_body["serverChallenge"]
+        )
         assertion = mint_assertion(
             cred_key,
             nonce=assertion_nonce or nonce,
@@ -419,7 +427,12 @@ def test_finish_malformed_assertion_b64(env) -> None:
 def test_finish_attestation_app_id_mismatch(env) -> None:
     register_tenant(env.client)
     begin_body, nonce = begin(env)
-    attestation, cred_key = mint_attestation(env.roots["production"], rp_id="com.other.bundle")
+    attestation, cred_key = mint_attestation(
+        env.roots["production"],
+        rp_id="com.other.bundle",
+        nonce=nonce,
+        server_challenge=begin_body["serverChallenge"],
+    )
     assertion = mint_assertion(
         cred_key, nonce=nonce, server_challenge=begin_body["serverChallenge"]
     )
@@ -433,7 +446,12 @@ def test_finish_attestation_chain_verify_failed(env) -> None:
     register_tenant(env.client)
     begin_body, nonce = begin(env)
     stranger_root = make_root("Stranger Root")
-    attestation, cred_key = mint_attestation(stranger_root, rp_id=BUNDLE_ID)
+    attestation, cred_key = mint_attestation(
+        stranger_root,
+        rp_id=BUNDLE_ID,
+        nonce=nonce,
+        server_challenge=begin_body["serverChallenge"],
+    )
     assertion = mint_assertion(
         cred_key, nonce=nonce, server_challenge=begin_body["serverChallenge"]
     )
@@ -443,11 +461,34 @@ def test_finish_attestation_chain_verify_failed(env) -> None:
     assert response.json() == {"error": "chain_verify_failed"}
 
 
+def expired_attestation(root, *, nonce: str, server_challenge: str) -> tuple[str, Any]:
+    """Mint an attestation whose leaf certificate has expired validity dates.
+
+    conftest.mint_attestation(expired_leaf=True) cannot be used here: its
+    ``not_valid_after`` argument is evaluated before ``_make_cert`` samples
+    ``not_valid_before`` a few microseconds later, inverting the dates and
+    raising ValueError (reported to the conftest owner). The leaf is rebuilt
+    with the same key and a ``not_valid_after`` safely after the sampled
+    ``not_valid_before`` but still long past.
+    """
+    attestation, cred_key = mint_attestation(root, nonce=nonce, server_challenge=server_challenge)
+    obj = cbor2.loads(base64.b64decode(attestation))
+    leaf = _make_cert(
+        signer=root,
+        public_key=cred_key.public_key(),
+        cn="expired",
+        nonce_value=_nonce_extension(obj["authData"], nonce, server_challenge),
+        not_valid_after=datetime.now(UTC) - timedelta(days=1, seconds=-5),
+    )
+    obj["attStmt"]["x5c"] = [leaf.public_bytes(serialization.Encoding.DER)]
+    return b64(cbor2.dumps(obj)), cred_key
+
+
 def test_finish_attestation_cert_expired(env) -> None:
     register_tenant(env.client)
     begin_body, nonce = begin(env)
-    attestation, cred_key = mint_attestation(
-        env.roots["production"], rp_id=BUNDLE_ID, expired_leaf=True
+    attestation, cred_key = expired_attestation(
+        env.roots["production"], nonce=nonce, server_challenge=begin_body["serverChallenge"]
     )
     assertion = mint_assertion(
         cred_key, nonce=nonce, server_challenge=begin_body["serverChallenge"]
@@ -491,6 +532,76 @@ def test_finish_invalid_pubkey(env) -> None:
     response = post_finish(env, payload)
     assert response.status_code == 400
     assert response.json() == {"error": "invalid_pubkey"}
+
+
+# -- finish: signing-key trust-on-first-use (spec §2.2 step 6, threat A16) ------
+
+
+def test_finish_tofu_rejects_different_pubkey(env) -> None:
+    register_tenant(env.client)
+    first_pubkey = generate_keypair()[1]
+    begin_body, nonce = begin(env)
+    first = post_finish(env, finish_payload(env, begin_body, nonce, pubkey=first_pubkey))
+    assert first.status_code == 200, first.text
+
+    # enroll/finish is unauthenticated by design: a second finish presenting a
+    # *different* key must not replace the bound one — rotation is
+    # `relay tenant revoke` + re-enroll (spec §2.6).
+    begin_body, nonce = begin(env)
+    payload = finish_payload(env, begin_body, nonce, pubkey=generate_keypair()[1])
+    response = post_finish(env, payload)
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_pubkey"}
+    assert env.store.tenant(TENANT_ID, APP_ID).pubkey == first_pubkey
+
+
+def test_finish_same_pubkey_reenroll(env) -> None:
+    register_tenant(env.client)
+    pubkey = generate_keypair()[1]
+    begin_body, nonce = begin(env)
+    first = post_finish(env, finish_payload(env, begin_body, nonce, pubkey=pubkey))
+    assert first.status_code == 200, first.text
+
+    # Re-enrolling the same key is allowed (new consent / new token) and does
+    # not rewrite the stored binding.
+    begin_body, nonce = begin(env)
+    second = post_finish(env, finish_payload(env, begin_body, nonce, pubkey=pubkey))
+    assert second.status_code == 200, second.text
+    claims = relay_client.grant_claims(second.json()["grant"])
+    assert claims["tpk"] == pubkey
+    assert env.store.tenant(TENANT_ID, APP_ID).pubkey == pubkey
+
+
+def test_finish_lost_first_enroll_race(env, monkeypatch) -> None:
+    # The tenant looked keyless at read time, but the conditional write
+    # (WHERE pubkey='') found a key already there: fail closed (api.py:402).
+    register_tenant(env.client)
+    begin_body, nonce = begin(env)
+    payload = finish_payload(env, begin_body, nonce)
+    monkeypatch.setattr(env.store, "set_pubkey", lambda *args: False)
+    response = post_finish(env, payload)
+    assert response.status_code == 400
+    assert response.json() == {"error": "invalid_pubkey"}
+
+
+def test_finish_aaguid_environment_mismatch(env) -> None:
+    # The app's attest_environment is "production": a development-AAGUID
+    # attestation (from a development build) must be rejected (spec §2.2 3.6).
+    register_tenant(env.client)
+    begin_body, nonce = begin(env)
+    attestation, cred_key = mint_attestation(
+        env.roots["production"],
+        nonce=nonce,
+        server_challenge=begin_body["serverChallenge"],
+        aaguid=AAGUID_BY_ATTEST_ENV["development"],
+    )
+    assertion = mint_assertion(
+        cred_key, nonce=nonce, server_challenge=begin_body["serverChallenge"]
+    )
+    payload = finish_payload(env, begin_body, nonce, attestation=attestation, assertion=assertion)
+    response = post_finish(env, payload)
+    assert response.status_code == 400
+    assert response.json() == {"error": "aaguid_mismatch"}
 
 
 def test_finish_rate_limited(env) -> None:

@@ -25,7 +25,7 @@ DEFAULT_DENY_SECONDS = 86400  # when `expires` is omitted: one day
 
 
 def admin_router(state: AppState) -> APIRouter:
-    router = APIRouter(prefix="/admin", tags=["admin"])
+    router = APIRouter(prefix="/admin", tags=["admin"], include_in_schema=False)
 
     async def require_admin(request: Request) -> None:
         header = request.headers.get("authorization", "")

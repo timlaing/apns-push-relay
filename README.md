@@ -48,8 +48,8 @@ tenant backend ──(token + Ed25519 signature)──► relay ──(.p8 keys)
 git clone https://github.com/timlaing/apns-push-relay.git
 cd apns-push-relay
 cp deploy/config.yaml.example deploy/config.yaml   # edit: apps, domains
-cp deploy/.env.example .env                        # set RELAY_ADMIN_TOKEN,
-                                                   # RELAY_MASTER_SECRET
+cp deploy/.env.example deploy/.env                # set RELAY_ADMIN_TOKEN,
+                                                  # RELAY_MASTER_SECRET
 # put your .p8 keys somewhere referenced by config.yaml (never committed)
 docker compose -f deploy/docker-compose.yml up -d
 ```

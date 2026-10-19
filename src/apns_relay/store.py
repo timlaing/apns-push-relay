@@ -155,10 +155,16 @@ class Store:
         return cur.rowcount > 0
 
     def set_pubkey(self, id: str, app: str, pubkey: str) -> bool:
-        """Store the tenant's Ed25519 signing key (set at enroll/finish)."""
+        """Set the tenant's Ed25519 signing key — only while unset (TOFU).
+
+        ``enroll/finish`` is unauthenticated by design (App Attest proves the
+        device), so the stored key must never be replaced here; the conditional
+        write also makes two concurrent first-enrollments safe. False if the
+        registration is gone or a key is already set (spec §2.4).
+        """
         with self.connect() as db:
             cur = db.execute(
-                "UPDATE tenants SET pubkey=? WHERE id=? AND app=?",
+                "UPDATE tenants SET pubkey=? WHERE id=? AND app=? AND pubkey=''",
                 (pubkey, id, app),
             )
         return cur.rowcount > 0

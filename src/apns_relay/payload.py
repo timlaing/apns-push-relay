@@ -26,7 +26,9 @@ import json
 from .config import CapsConfig
 
 PRIORITY_BY_KIND = {"alert": 10, "background": 5, "liveActivity": 5}
-LA_EVENTS = ("start", "update", "end")
+# Push-to-start ("start") is deferred — PLAN §1: it requires
+# attributes-type/attributes, which the structured content does not carry.
+LA_EVENTS = ("update", "end")
 
 TOP_LEVEL_FIELDS = ("alert", "background", "liveActivity", "sealed")
 ALERT_FIELDS = ("title", "subtitle", "body", "category", "thread", "sound")
@@ -69,10 +71,24 @@ def _cap_alert(alert: dict, caps: CapsConfig) -> dict:
 
 
 def _build_alert(content: dict, caps: CapsConfig) -> dict:
+    """Wire alert text into ``aps.alert``; category/thread/sound live at the
+    ``aps`` level where APNs actually reads them (anything else is dropped by
+    APNs silently, so the relay must translate, not copy)."""
     alert = content.get("alert")
     if not isinstance(alert, dict):
         raise PayloadError("invalid_payload")
-    return {"aps": {"alert": _cap_alert(alert, caps)}}
+    fields = _cap_alert(alert, caps)
+    aps: dict = {}
+    text = {k: fields[k] for k in ("title", "subtitle", "body") if k in fields}
+    if text:
+        aps["alert"] = text
+    if "category" in fields:
+        aps["category"] = fields["category"]
+    if "thread" in fields:
+        aps["thread-id"] = fields["thread"]
+    if "sound" in fields:
+        aps["sound"] = fields["sound"]
+    return {"aps": aps}
 
 
 def _build_background(content: dict, caps: CapsConfig) -> dict:
@@ -97,16 +113,20 @@ def _build_live_activity(content: dict, caps: CapsConfig) -> dict:
     event = inner.get("event")
     if event not in LA_EVENTS:
         raise PayloadError("invalid_payload")
+    # ActivityKit reads hyphenated aps keys; the wire format keeps camelCase
+    # and the relay translates. Push-to-start is deferred (PLAN §1): it needs
+    # attributes-type/attributes, which this API does not carry — reject
+    # rather than accept a push APNs would drop.
     aps: dict = {"event": event}
-    if "timestamp" in inner:
-        if not isinstance(inner["timestamp"], int) or isinstance(inner["timestamp"], bool):
-            raise PayloadError("invalid_payload")
-        aps["timestamp"] = inner["timestamp"]
-    for field in ("staleDate", "dismissalDate"):
+    timestamp = inner.get("timestamp")
+    if not isinstance(timestamp, int) or isinstance(timestamp, bool):
+        raise PayloadError("invalid_payload")
+    aps["timestamp"] = timestamp
+    for field, apns_key in (("staleDate", "stale-date"), ("dismissalDate", "dismissal-date")):
         if field in inner:
             if not isinstance(inner[field], int) or isinstance(inner[field], bool):
                 raise PayloadError("invalid_payload")
-            aps[field] = inner[field]
+            aps[apns_key] = inner[field]
     if "state" in inner:
         state = inner["state"]
         if not isinstance(state, (dict, list)):
@@ -114,7 +134,7 @@ def _build_live_activity(content: dict, caps: CapsConfig) -> dict:
         encoded = json.dumps(state, separators=(",", ":"), ensure_ascii=False)
         if len(encoded.encode()) > caps.background:
             raise PayloadError("background_too_long")
-        aps["state"] = state
+        aps["content-state"] = state
     return {"aps": aps}
 
 

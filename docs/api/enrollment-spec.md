@@ -1,7 +1,9 @@
 # Enrollment & Grant Specification + Threat Model
 
-**Status:** Reviewed v1.0 — M0 gate complete (reviewed 19 October 2026)
-**Version:** 1 · 19 October 2026
+**Status:** Reviewed v1.0 — M0 gate complete (19 October 2026);
+amended v1.1 — attestation binding steps, signing-key TOFU, Live Activity
+events (see §7)
+**Version:** 1.1 · 19 October 2026
 **Applies to:** relay protocol version 1
 **License:** MIT · Copyright (c) 2026 Tim Laing
 
@@ -162,21 +164,42 @@ Verification, all mandatory:
 1. `challengeId` exists, unexpired, unused; request `tenantId` matches.
 2. The pushed `nonce` must be bound into the assertion's signed data
    (`SHA256(nonce ‖ serverChallenge)`) — possession proof, single-use.
-3. **App Attest**: verify the attestation's x5c chain to Apple's App Attestation
-   Root, the attested **app ID equals the configured bundle ID** for `app`,
-   and the **environment matches** `attest_environment` (development vs
-   production attestations differ). Extract the credential public key.
+3. **App Attest** — verify, in order (Apple, "Validating apps that connect
+   to your server"):
+   1. the x5c chain to Apple's App Attestation Root, and leaf validity dates;
+   2. the **nonce extension** (OID `1.2.840.113635.100.8.2`) inside the leaf
+      certificate equals `SHA256(authData ‖ SHA256(nonce ‖ serverChallenge))`
+      — this is what binds the Apple-signed certificate to the otherwise
+      unsigned `authData`;
+   3. the **credential ID** equals `SHA256(leaf public key)` in X9.62
+      uncompressed point form, and the COSE key inside `authData` hashes to
+      the same value (the attested key pair and the certified key are one);
+   4. the attested **app ID equals the configured bundle ID** (`rpIdHash`)
+      — for assertions too;
+   5. `authData.counter` is 0 in the attestation (counters advance only in
+      assertions);
+   6. the **AAGUID** matches the App's `attest_environment`
+      (`appattestdevelop` for development, `appattest` + seven zero bytes
+      for production).
+      Extract the credential public key.
 4. Verify the assertion signature with that credential key over
-   `SHA256(nonce ‖ serverChallenge)`.
+   `SHA256(nonce ‖ serverChallenge)`, re-checking the assertion's `rpIdHash`
+   against the configured bundle ID.
 5. `kinds` ⊆ the App's configured allowed kinds.
+6. **Signing key is trust-on-first-use.** `tenantPubkey` is stored only while
+   the tenant has no key; a _different_ key for an already-bound tenant is
+   rejected (`invalid_pubkey`) — enroll/finish is unauthenticated by design,
+   so key replacement would let anyone holding a stolen token impersonate the
+   tenant. Rotation: `relay tenant revoke` + re-enroll (§2.6).
 
 Failure at any step → `400`, challenge burned (single-use even on failure
 after nonce consumption). Success → challenge row deleted, grant issued.
 
 _Implementation note (M4): follow Apple's current App Attest verification
 document for exact CBOR field handling and root-cert distribution; this spec
-fixes the security properties (chain, app ID, environment, single-use
-serverChallenge, nonce binding), not Apple's wire encoding. Validate against a
+fixes the security properties (chain, nonce-extension binding, credential-ID
+binding, app ID, environment/AAGUID, single-use serverChallenge, nonce
+binding, signing-key TOFU), not Apple's wire encoding. Validate against a
 physical device before enabling for any production App._
 
 ### 2.3 Grant format
@@ -248,12 +271,12 @@ grant_ttl: { min: 900, max: 86400, default: 21600 } # seconds; min 15m, max 24h
 
 ### 2.6 Revocation
 
-| Path                                      | Trigger                       | Effect                                                                         |
-| ----------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------ |
-| `POST /v1/revoke` (tenant-authed, signed) | Backend unsubscribes a device | `jti` denylisted until its natural `exp` (bounded storage)                     |
-| Operator CLI `relay denylist add`         | Abuse response                | `jti`, `tenant`, or `token-hash` denylisted; tenant-wide kill supported        |
-| 30-day non-use deletion                   | Inactivity                    | Tenant + all grants' `jti`s implicitly dead (tenant token no longer validates) |
-| Re-enrollment                             | New token / new consent       | Old grant simply lapses; new grant issued for new binding                      |
+| Path                                      | Trigger                       | Effect                                                                                                                                             |
+| ----------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/revoke` (tenant-authed, signed) | Backend unsubscribes a device | `jti` denylisted until its natural `exp` (bounded storage)                                                                                         |
+| Operator CLI `relay denylist add`         | Abuse response                | `jti`, `tenant`, or `token-hash` denylisted; tenant-wide kill supported                                                                            |
+| 30-day non-use deletion                   | Inactivity                    | Tenant + all grants' `jti`s implicitly dead (tenant token no longer validates)                                                                     |
+| Re-enrollment                             | New token / new consent       | Old grant simply lapses; new grant issued for the same key (TOFU, §2.2 step 6). A _different_ key requires `relay tenant revoke` + re-registration |
 
 Denylist entries carry the grant's `exp` as their natural purge time — no
 unbounded growth. There is no per-grant _stateful_ check on the delivery path:
@@ -277,7 +300,7 @@ or key revocation).
 | A1  | Replay a captured push request                                      | TLS + single-use nonce + token-bound canonical signature (PLAN §3.2)                                                                                                                                                                                                 |
 | A2  | Splice a stolen signature onto another tenant's token               | Token digest inside the signed message; verification binds them                                                                                                                                                                                                      |
 | A3  | Enroll a victim's device token (unsolicited pushes)                 | Challenge push must be echoed — attacker never receives it; App Attest requires a genuine app; user consent required in-app                                                                                                                                          |
-| A4  | Cloned/fake client enrolling devices                                | App Attest chain + exact bundle-ID + environment check; no attestation → no grant                                                                                                                                                                                    |
+| A4  | Cloned/fake client enrolling devices                                | App Attest chain + **nonce-extension / credential-ID binding** + exact bundle-ID + AAGUID/environment check; no attestation → no grant                                                                                                                               |
 | A5  | Use a stolen grant to push                                          | Grant alone is insufficient (tenant token + signature also required); short TTL; `jti` denylist; token-hash binding stops token substitution                                                                                                                         |
 | A6  | Stolen tenant token without keypair                                 | Cannot sign requests → `401`; `relay tenant reissue` rotates                                                                                                                                                                                                         |
 | A7  | Stolen tenant token **and** keypair                                 | Full tenant impersonation until detected — bounded by per-key quotas, per-token caps, denylist, 30-day expiry; incident path is `relay denylist add --tenant`                                                                                                        |
@@ -289,6 +312,7 @@ or key revocation).
 | A13 | Malicious relay operator (modified build logging tokens in transit) | Tokens never stored by the stock relay — nothing to steal at rest; sealed blob keeps detail blind; honest disclosure (§1); self-hosting removes the party; optional future: verifiable image digests                                                                 |
 | A14 | Enrollment-endpoint DoS                                             | Per-IP rate limits on `enroll/*`, challenge TTL, single-use rows                                                                                                                                                                                                     |
 | A15 | Grant-issuer key compromise                                         | **Single issuer key in v1** (no key-set shipping). Rotation runbook (M8): install new key, restart — all outstanding grants (≤ max 24h TTL) lapse early; tenants re-enroll. `iss` claim present from v1 so a key set can be added later without a grant-format break |
+| A16 | Replace a tenant's signing key via unauthenticated `enroll/finish`  | Signing key is trust-on-first-use (§2.2 step 6): stored only while empty; a different key → `invalid_pubkey`; concurrent first-enroll writes are conditional. Rotation is `relay tenant revoke` + re-enroll                                                          |
 
 ### 3.3 Out of scope (v1)
 
@@ -354,3 +378,31 @@ The four M0 open questions are resolved:
    activity push token as `destinationToken`; no separate channel. The
    destination-token hash makes alert and liveActivity bindings naturally
    disjoint, and App Attest / challenge-push / consent apply identically. (§2.1)
+
+---
+
+## 7. Amendments (v1.1, 19 October 2026)
+
+Recorded here so the reviewed v1.0 text and the implemented behavior stay
+traceable. All four came out of the post-implementation review; none weaken a
+v1.0 property.
+
+1. **Attestation binding steps made explicit (§2.2 step 3).** v1.0 named the
+   security properties (chain, app ID, environment); v1.1 pins the exact
+   Apple verification steps that realize them — the leaf-certificate nonce
+   extension (`1.2.840.113635.100.8.2` = `SHA256(authData ‖
+SHA256(nonce ‖ serverChallenge))`), credential-ID = `SHA256(leaf public
+key)` (X9.62 uncompressed), COSE key hash equality, attestation counter 0,
+   and AAGUID pinned per `attest_environment`. Without the nonce extension
+   check, `authData` (unsigned) could be forged alongside a replayed genuine
+   chain — voiding threat A4.
+2. **Assertion `rpIdHash` re-check (§2.2 step 4).** Apple's assertion
+   verification includes re-validating the app-ID hash in the assertion's own
+   authenticator data.
+3. **Signing key is trust-on-first-use (§2.2 step 6, threat A16).**
+   `enroll/finish` is unauthenticated by design, so a stored `tenantPubkey`
+   can never be replaced through it; rotation goes through `relay tenant
+revoke` + re-enroll.
+4. **Live Activity events are `update`/`end` only.** Push-to-start requires
+   `attributes-type`/`attributes`, which this API does not carry; `start` is
+   rejected rather than accepted-and-dropped (PLAN §1 already deferred it).

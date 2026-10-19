@@ -36,6 +36,7 @@ import relay_client  # noqa: E402
 
 from apns_relay.apns import APNsSender, KeyRegistry  # noqa: E402
 from apns_relay.app import create_app  # noqa: E402
+from apns_relay.attest import AAGUID_BY_ATTEST_ENV  # noqa: E402
 from apns_relay.config import RelayConfig, load_config  # noqa: E402
 from apns_relay.signing import generate_keypair  # noqa: E402
 from apns_relay.store import Store  # noqa: E402
@@ -184,22 +185,52 @@ def make_root(common: str = "Test App Attest Root") -> RootCA:
     return RootCA(key=key, cert=cert)
 
 
-def _issue_leaf(root: RootCA, public_key: ec.EllipticCurvePublicKey, cn: str) -> x509.Certificate:
+def _rp_hash(rp_id: str) -> bytes:
+    return hashlib.sha256(rp_id.encode()).digest()
+
+
+def _point(public: ec.EllipticCurvePublicKey) -> bytes:
+    return public.public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    )
+
+
+def _nonce_extension(auth_data: bytes, nonce: str, server_challenge: str) -> bytes:
+    """Apple's credCert nonce extension (OID 1.2.840.113635.100.8.2): a DER
+    SEQUENCE { OCTET STRING } wrapping SHA256(authData ‖ clientDataHash),
+    where clientDataHash = SHA256(nonce ‖ serverChallenge)."""
+    client_data_hash = hashlib.sha256((nonce + server_challenge).encode()).digest()
+    digest = hashlib.sha256(auth_data + client_data_hash).digest()
+    return b"\x30\x22\x04\x20" + digest
+
+
+def _make_cert(
+    *,
+    signer: RootCA,
+    public_key: ec.EllipticCurvePublicKey,
+    cn: str,
+    nonce_value: bytes | None = None,
+    not_valid_before: datetime | None = None,
+    not_valid_after: datetime | None = None,
+) -> x509.Certificate:
     now = datetime.now(UTC)
     builder = (
         x509.CertificateBuilder()
         .subject_name(_name(cn))
-        .issuer_name(root.cert.subject)
+        .issuer_name(signer.cert.subject)
         .public_key(public_key)
         .serial_number(x509.random_serial_number())
-        .not_valid_before(now - timedelta(days=1))
-        .not_valid_after(now + timedelta(days=30))
+        .not_valid_before(not_valid_before or (now - timedelta(days=1)))
+        .not_valid_after(not_valid_after or (now + timedelta(days=30)))
     )
-    return builder.sign(root.key, hashes.SHA256())
+    if nonce_value is not None:
+        builder = builder.add_extension(
+            x509.UnrecognizedExtension(APPLE_ATTEST_NONCE_OID, nonce_value), critical=False
+        )
+    return builder.sign(signer.key, hashes.SHA256())
 
 
-def _rp_hash(rp_id: str) -> bytes:
-    return hashlib.sha256(rp_id.encode()).digest()
+APPLE_ATTEST_NONCE_OID = x509.ObjectIdentifier("1.2.840.113635.100.8.2")
 
 
 def _cose_key(public: ec.EllipticCurvePublicKey) -> bytes:
@@ -218,68 +249,68 @@ def _cose_key(public: ec.EllipticCurvePublicKey) -> bytes:
 def mint_attestation(
     root: RootCA,
     *,
+    server_challenge: str,
     rp_id: str = BUNDLE_ID,
+    nonce: str = "test-nonce",
     credential_id: bytes | None = None,
     expired_leaf: bool = False,
     intermediate: bool = False,
+    aaguid: bytes = AAGUID_BY_ATTEST_ENV["production"],
 ) -> tuple[str, EllipticCurvePrivateKey]:
     """Fabricate a valid Apple-format attestation object (b64 CBOR).
+
+    Honors every binding the relay checks (spec §2.2 v1.1): the leaf certificate
+    carries the credential key, its nonce extension commits to authData ‖ the
+    challenge pair, credentialId is the SHA-256 of the credential key's X9.62
+    uncompressed point, and the attestation counter is 0.
 
     Returns ``(attestation_b64, credential_private_key)`` — the key that must
     sign the assertion.
     """
     cred_key = ec.generate_private_key(ec.SECP256R1())
-    credential_id = credential_id or hashlib.sha256(b"cred").digest()
+    cred_id = credential_id or hashlib.sha256(_point(cred_key.public_key())).digest()
 
-    # The attested *credential* key lives in authData; the leaf cert carries
-    # an independent key (Apple's leaf binds them; the relay never checks).
-    cert_key = ec.generate_private_key(ec.SECP256R1())
+    auth_data = (
+        _rp_hash(rp_id)
+        + b"\x41"  # flags: UP | AT
+        + (0).to_bytes(4, "big")  # counter: 0 in attestations (Apple step 7)
+        + aaguid
+        + len(cred_id).to_bytes(2, "big")
+        + cred_id
+        + _cose_key(cred_key.public_key())
+    )
+    nonce_value = _nonce_extension(auth_data, nonce, server_challenge)
+
     if expired_leaf:
         now = datetime.now(UTC)
-        leaf = (
-            x509.CertificateBuilder()
-            .subject_name(_name("expired"))
-            .issuer_name(root.cert.subject)
-            .public_key(cert_key.public_key())
-            .serial_number(x509.random_serial_number())
-            .not_valid_before(now - timedelta(days=30))
-            .not_valid_after(now - timedelta(days=1))
-            .sign(root.key, hashes.SHA256())
+        leaf = _make_cert(
+            signer=root,
+            public_key=cred_key.public_key(),
+            cn="expired",
+            nonce_value=nonce_value,
+            not_valid_before=now - timedelta(days=30),
+            not_valid_after=now - timedelta(days=1),
         )
         x5c = [leaf.public_bytes(serialization.Encoding.DER)]
     elif intermediate:
         inter_key = ec.generate_private_key(ec.SECP256R1())
-        now = datetime.now(UTC)
-        inter = (
-            x509.CertificateBuilder()
-            .subject_name(_name("Test Intermediate"))
-            .issuer_name(root.cert.subject)
-            .public_key(inter_key.public_key())
-            .serial_number(x509.random_serial_number())
-            .not_valid_before(now - timedelta(days=1))
-            .not_valid_after(now + timedelta(days=3650))
-            .sign(root.key, hashes.SHA256())
+        inter = _make_cert(signer=root, public_key=inter_key.public_key(), cn="Test Intermediate")
+        leaf = _make_cert(
+            signer=RootCA(key=inter_key, cert=inter),
+            public_key=cred_key.public_key(),
+            cn="leaf",
+            nonce_value=nonce_value,
         )
-        leaf = _issue_leaf(RootCA(key=inter_key, cert=inter), cert_key.public_key(), "leaf")
         x5c = [
             leaf.public_bytes(serialization.Encoding.DER),
             inter.public_bytes(serialization.Encoding.DER),
         ]
     else:
-        leaf = _issue_leaf(root, cert_key.public_key(), "attest-leaf")
+        leaf = _make_cert(
+            signer=root, public_key=cred_key.public_key(), cn="attest-leaf", nonce_value=nonce_value
+        )
         x5c = [leaf.public_bytes(serialization.Encoding.DER)]
 
-    rp_hash = _rp_hash(rp_id)
-    aaguid = bytes(range(16))
-    auth_data = (
-        rp_hash
-        + b"\x41"  # flags: UP | AT
-        + (1).to_bytes(4, "big")  # counter
-        + aaguid
-        + len(credential_id).to_bytes(2, "big")
-        + credential_id
-        + _cose_key(cred_key.public_key())
-    )
     att_obj = cbor2.dumps({"fmt": "apple", "attStmt": {"x5c": x5c}, "authData": auth_data})
     return b64(att_obj), cred_key
 
@@ -531,7 +562,9 @@ def enroll(
     server_challenge = begin.json()["serverChallenge"]
     nonce = env.apns.challenge_for(challenge_id)["body"]["relay-challenge"]["nonce"]
 
-    attestation, cred_key = mint_attestation(root, rp_id=bundle)
+    attestation, cred_key = mint_attestation(
+        root, rp_id=bundle, nonce=nonce, server_challenge=server_challenge
+    )
     assertion = mint_assertion(
         cred_key, nonce=nonce, server_challenge=server_challenge, rp_id=bundle
     )

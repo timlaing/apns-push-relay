@@ -8,6 +8,7 @@ performs, building authData/CBOR by hand where the parsing internals need it.
 from __future__ import annotations
 
 import base64
+import hashlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -19,6 +20,8 @@ from cryptography.hazmat.primitives.asymmetric import ec, ed25519, rsa
 from cryptography.x509.oid import NameOID
 
 from apns_relay.attest import (
+    AAGUID_BY_ATTEST_ENV,
+    APPLE_ATTEST_NONCE_OID,
     AttestedCredential,
     AttestError,
     _extract_credential,
@@ -30,6 +33,9 @@ from tests.conftest import (
     BUNDLE_ID,
     OTHER_BUNDLE_ID,
     _cose_key,
+    _make_cert,
+    _nonce_extension,
+    _point,
     _rp_hash,
     make_root,
     mint_assertion,
@@ -38,6 +44,12 @@ from tests.conftest import (
 
 # Minimum-size assertion authenticatorData: rpIdHash(32) + flags(1) + counter(4).
 _AD37 = _rp_hash(BUNDLE_ID) + b"\x01" + (1).to_bytes(4, "big")
+
+# The challenge pair every minter defaults to; verify_* calls must pass the
+# same values (the leaf certificate's nonce extension commits to them).
+_NONCE = "test-nonce"
+_SERVER_CHALLENGE = "test-challenge"
+_PRODUCTION_AAGUID = AAGUID_BY_ATTEST_ENV["production"]
 
 
 @pytest.fixture
@@ -52,13 +64,15 @@ def other_root():
 
 def _attestation(root, **kwargs) -> tuple[bytes, ec.EllipticCurvePrivateKey]:
     """Mint an attestation and return the CBOR bytes verify_attestation takes."""
+    kwargs.setdefault("nonce", _NONCE)
+    kwargs.setdefault("server_challenge", _SERVER_CHALLENGE)
     token, cred_key = mint_attestation(root, **kwargs)
     return base64.b64decode(token), cred_key
 
 
 def _reserialized(root, **fields) -> bytes:
     """Mint a valid attestation, overwrite top-level CBOR fields, re-encode."""
-    token, _ = mint_attestation(root)
+    token, _ = mint_attestation(root, server_challenge=_SERVER_CHALLENGE)
     obj = cbor2.loads(base64.b64decode(token))
     obj.update(fields)
     return cbor2.dumps(obj)
@@ -75,6 +89,8 @@ def _credential(root) -> tuple[AttestedCredential, ec.EllipticCurvePrivateKey]:
         root=root.cert,
         expected_rp_id=BUNDLE_ID,
         expected_aaguid=None,
+        nonce=_NONCE.encode(),
+        server_challenge=_SERVER_CHALLENGE.encode(),
     )
     return credential, cred_key
 
@@ -102,35 +118,49 @@ def _auth_data(
 
 
 def test_verify_attestation_happy(root) -> None:
-    credential_id = b"device-credential-001"
-    attestation, _ = _attestation(root, credential_id=credential_id)
+    attestation, cred_key = _attestation(root)
     credential = verify_attestation(
         attestation,
         root=root.cert,
         expected_rp_id=BUNDLE_ID,
-        expected_aaguid=bytes(range(16)),
+        expected_aaguid=_PRODUCTION_AAGUID,
+        nonce=_NONCE.encode(),
+        server_challenge=_SERVER_CHALLENGE.encode(),
     )
     assert isinstance(credential, AttestedCredential)
     assert isinstance(credential.public_key, ec.EllipticCurvePublicKey)
     assert isinstance(credential.public_key.curve, ec.SECP256R1)
-    assert credential.aaguid == bytes(range(16))
-    assert credential.credential_id == credential_id
+    assert credential.aaguid == _PRODUCTION_AAGUID
+    # credentialId defaults to SHA-256 of the credential key's X9.62 point,
+    # and the leaf certificate carries that same key (spec §2.2 step 3).
+    assert credential.credential_id == hashlib.sha256(_point(cred_key.public_key())).digest()
+    assert credential.public_key.public_numbers() == cred_key.public_key().public_numbers()
 
 
 def test_verify_attestation_aaguid_unpinned(root) -> None:
     attestation, _ = _attestation(root)
     credential = verify_attestation(
-        attestation, root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+        attestation,
+        root=root.cert,
+        expected_rp_id=BUNDLE_ID,
+        expected_aaguid=None,
+        nonce=_NONCE.encode(),
+        server_challenge=_SERVER_CHALLENGE.encode(),
     )
-    assert credential.aaguid == bytes(range(16))
+    assert credential.aaguid == _PRODUCTION_AAGUID
 
 
 def test_verify_attestation_intermediate_chain(root) -> None:
-    attestation, _ = _attestation(root, intermediate=True, credential_id=b"intermediate-cred")
+    attestation, cred_key = _attestation(root, intermediate=True)
     credential = verify_attestation(
-        attestation, root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+        attestation,
+        root=root.cert,
+        expected_rp_id=BUNDLE_ID,
+        expected_aaguid=None,
+        nonce=_NONCE.encode(),
+        server_challenge=_SERVER_CHALLENGE.encode(),
     )
-    assert credential.credential_id == b"intermediate-cred"
+    assert credential.credential_id == hashlib.sha256(_point(cred_key.public_key())).digest()
 
 
 # -- verify_attestation: malformed objects -------------------------------------
@@ -148,7 +178,12 @@ def test_verify_attestation_malformed_fields(root, fields) -> None:
     attestation = _reserialized(root, **fields)
     with pytest.raises(AttestError) as exc:
         verify_attestation(
-            attestation, root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+            attestation,
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=None,
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
         )
     assert exc.value.code == "malformed_attestation"
 
@@ -156,7 +191,12 @@ def test_verify_attestation_malformed_fields(root, fields) -> None:
 def test_verify_attestation_not_a_dict(root) -> None:
     with pytest.raises(AttestError) as exc:
         verify_attestation(
-            cbor2.dumps([1, 2, 3]), root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+            cbor2.dumps([1, 2, 3]),
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=None,
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
         )
     assert exc.value.code == "malformed_attestation"
 
@@ -166,7 +206,12 @@ def test_verify_attestation_garbage_cbor(root) -> None:
     # subclasses) must still surface as AttestError, not escape to a 500.
     with pytest.raises(AttestError) as exc:
         verify_attestation(
-            b"notcbor", root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+            b"notcbor",
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=None,
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
         )
     assert exc.value.code == "malformed_attestation"
 
@@ -182,7 +227,12 @@ def test_verify_attestation_missing_x5c(root, att_stmt) -> None:
     attestation = _reserialized(root, attStmt=att_stmt)
     with pytest.raises(AttestError) as exc:
         verify_attestation(
-            attestation, root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+            attestation,
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=None,
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
         )
     assert exc.value.code == "missing_x5c"
 
@@ -191,7 +241,12 @@ def test_verify_attestation_empty_chain(root) -> None:
     attestation = _reserialized(root, attStmt={"x5c": []})
     with pytest.raises(AttestError) as exc:
         verify_attestation(
-            attestation, root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+            attestation,
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=None,
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
         )
     assert exc.value.code == "empty_chain"
 
@@ -204,7 +259,12 @@ def test_verify_attestation_unparseable_x5c(root, x5c_entry) -> None:
     attestation = _reserialized(root, attStmt={"x5c": [x5c_entry]})
     with pytest.raises(AttestError) as exc:
         verify_attestation(
-            attestation, root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+            attestation,
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=None,
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
         )
     assert exc.value.code == "malformed_attestation"
 
@@ -213,17 +273,43 @@ def test_verify_attestation_app_id_mismatch(root) -> None:
     attestation, _ = _attestation(root, rp_id=OTHER_BUNDLE_ID)
     with pytest.raises(AttestError) as exc:
         verify_attestation(
-            attestation, root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+            attestation,
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=None,
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
         )
     assert exc.value.code == "app_id_mismatch"
 
 
 def test_verify_attestation_expired_leaf(root) -> None:
-    attestation, _ = _attestation(root, expired_leaf=True)
-    with pytest.raises(AttestError) as exc:
-        verify_attestation(
-            attestation, root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+    # Hand-built because conftest.mint_attestation(expired_leaf=True) currently
+    # raises ValueError (see report): the leaf is rebuilt with past validity
+    # dates but the same authData, so the nonce extension still binds.
+    attestation, cred_key = _attestation(root)
+    obj = cbor2.loads(attestation)
+    now = datetime.now(UTC)
+    expired = (
+        x509.CertificateBuilder()
+        .subject_name(_name("expired"))
+        .issuer_name(root.cert.subject)
+        .public_key(cred_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=30))
+        .not_valid_after(now - timedelta(days=1))
+        .add_extension(
+            x509.UnrecognizedExtension(
+                APPLE_ATTEST_NONCE_OID,
+                _nonce_extension(obj["authData"], _NONCE, _SERVER_CHALLENGE),
+            ),
+            critical=False,
         )
+        .sign(root.key, hashes.SHA256())
+    )
+    obj["attStmt"]["x5c"] = [expired.public_bytes(serialization.Encoding.DER)]
+    with pytest.raises(AttestError) as exc:
+        _verify_bound(cbor2.dumps(obj), root)
     assert exc.value.code == "cert_expired"
 
 
@@ -232,7 +318,12 @@ def test_verify_attestation_chain_verify_failed(root, other_root) -> None:
     attestation, _ = _attestation(other_root)
     with pytest.raises(AttestError) as exc:
         verify_attestation(
-            attestation, root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+            attestation,
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=None,
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
         )
     assert exc.value.code == "chain_verify_failed"
 
@@ -256,7 +347,12 @@ def test_verify_attestation_bad_chain_key(root) -> None:
     obj["attStmt"]["x5c"].append(rsa_cert.public_bytes(serialization.Encoding.DER))
     with pytest.raises(AttestError) as exc:
         verify_attestation(
-            cbor2.dumps(obj), root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+            cbor2.dumps(obj),
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=None,
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
         )
     assert exc.value.code == "bad_chain_key"
 
@@ -281,7 +377,12 @@ def test_verify_attestation_signature_algorithm_without_hash(root) -> None:
     obj["attStmt"]["x5c"] = [leaf.public_bytes(serialization.Encoding.DER)]
     with pytest.raises(AttestError) as exc:
         verify_attestation(
-            cbor2.dumps(obj), root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=None
+            cbor2.dumps(obj),
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=None,
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
         )
     assert exc.value.code == "chain_verify_failed"
 
@@ -290,9 +391,200 @@ def test_verify_attestation_aaguid_mismatch(root) -> None:
     attestation, _ = _attestation(root)
     with pytest.raises(AttestError) as exc:
         verify_attestation(
-            attestation, root=root.cert, expected_rp_id=BUNDLE_ID, expected_aaguid=b"\x00" * 16
+            attestation,
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=b"\x00" * 16,
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
         )
     assert exc.value.code == "aaguid_mismatch"
+
+
+@pytest.mark.parametrize(
+    ("mint_aaguid", "expected_aaguid"),
+    [
+        pytest.param("development", "production", id="dev-attestation-prod-pin"),
+        pytest.param("production", "development", id="prod-attestation-dev-pin"),
+    ],
+)
+def test_verify_attestation_aaguid_environment_pin(root, mint_aaguid, expected_aaguid) -> None:
+    # The AAGUID must match the App's attest_environment in both directions
+    # (spec §2.2 step 3.6).
+    attestation, _ = _attestation(root, aaguid=AAGUID_BY_ATTEST_ENV[mint_aaguid])
+    with pytest.raises(AttestError) as exc:
+        verify_attestation(
+            attestation,
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=AAGUID_BY_ATTEST_ENV[expected_aaguid],
+            nonce=_NONCE.encode(),
+            server_challenge=_SERVER_CHALLENGE.encode(),
+        )
+    assert exc.value.code == "aaguid_mismatch"
+
+
+# -- _verify_binding: authData ↔ leaf-certificate binding (spec §2.2 v1.1) ------
+
+
+def _verify_bound(attestation: bytes, root, **kwargs) -> None:
+    """verify_attestation with the default challenge pair; callers assert the error."""
+    kwargs.setdefault("expected_rp_id", BUNDLE_ID)
+    kwargs.setdefault("expected_aaguid", None)
+    verify_attestation(
+        attestation,
+        root=root.cert,
+        nonce=_NONCE.encode(),
+        server_challenge=_SERVER_CHALLENGE.encode(),
+        **kwargs,
+    )
+
+
+def test_verify_attestation_nonce_extension_missing(root) -> None:
+    # Rebuild the leaf without Apple's nonce extension: authData is unsigned,
+    # so a genuine chain carrying no extension proves nothing about it.
+    attestation, cred_key = _attestation(root)
+    obj = cbor2.loads(attestation)
+    leaf = _make_cert(signer=root, public_key=cred_key.public_key(), cn="no-nonce-extension")
+    obj["attStmt"]["x5c"] = [leaf.public_bytes(serialization.Encoding.DER)]
+    with pytest.raises(AttestError) as exc:
+        _verify_bound(cbor2.dumps(obj), root)
+    assert exc.value.code == "nonce_extension_missing"
+
+
+@pytest.mark.parametrize(
+    ("verify_nonce", "verify_challenge"),
+    [
+        pytest.param("wrong-nonce", _SERVER_CHALLENGE, id="wrong-nonce"),
+        pytest.param(_NONCE, "wrong-challenge", id="wrong-server-challenge"),
+    ],
+)
+def test_verify_attestation_attestation_nonce_mismatch(
+    root, verify_nonce, verify_challenge
+) -> None:
+    # The leaf extension commits to the exact pushed challenge pair; a
+    # different pair at verify time cannot reproduce the digest.
+    attestation, _ = _attestation(root)
+    with pytest.raises(AttestError) as exc:
+        verify_attestation(
+            attestation,
+            root=root.cert,
+            expected_rp_id=BUNDLE_ID,
+            expected_aaguid=None,
+            nonce=verify_nonce.encode(),
+            server_challenge=verify_challenge.encode(),
+        )
+    assert exc.value.code == "attestation_nonce_mismatch"
+
+
+@pytest.mark.parametrize(
+    "nonce_value",
+    [
+        pytest.param(b"\x30\x22\x04\x20" + b"\x00" * 16, id="truncated-digest"),
+        pytest.param(b"\x30\x23\x04\x20" + b"\x00" * 32, id="bad-der-header"),
+    ],
+)
+def test_verify_attestation_malformed_nonce_extension(root, nonce_value) -> None:
+    # The extension value must be exactly the DER SEQUENCE { OCTET STRING (32) }.
+    attestation, cred_key = _attestation(root)
+    obj = cbor2.loads(attestation)
+    leaf = _make_cert(
+        signer=root, public_key=cred_key.public_key(), cn="bad-nonce", nonce_value=nonce_value
+    )
+    obj["attStmt"]["x5c"] = [leaf.public_bytes(serialization.Encoding.DER)]
+    with pytest.raises(AttestError) as exc:
+        _verify_bound(cbor2.dumps(obj), root)
+    assert exc.value.code == "attestation_nonce_mismatch"
+
+
+def test_verify_attestation_forged_auth_data_rejected(root) -> None:
+    # A genuine chain replayed alongside forged authData (attacker's counter,
+    # AAGUID, ...): the leaf's nonce extension no longer matches, so the
+    # unsigned authData cannot be swapped in (spec §7 amendment 1, threat A4).
+    attestation, _ = _attestation(root)
+    obj = cbor2.loads(attestation)
+    forged = bytearray(obj["authData"])
+    forged[36] ^= 0x01  # tamper with the counter (bytes 33-36) — unsigned data
+    obj["authData"] = bytes(forged)
+    with pytest.raises(AttestError) as exc:
+        _verify_bound(cbor2.dumps(obj), root)
+    assert exc.value.code == "attestation_nonce_mismatch"
+
+
+def test_verify_attestation_credential_id_mismatch(root) -> None:
+    # A credentialId that is not SHA-256(leaf public key) means the certified
+    # key was never attested (spec §2.2 step 3.3).
+    attestation, _ = _attestation(root, credential_id=b"custom-cred-id")
+    with pytest.raises(AttestError) as exc:
+        _verify_bound(attestation, root)
+    assert exc.value.code == "credential_id_mismatch"
+
+
+def _hand_built_auth_data(
+    *, leaf_key: ec.EllipticCurvePrivateKey, cose_key: ec.EllipticCurvePublicKey, counter: int
+) -> bytes:
+    cred_id = hashlib.sha256(_point(leaf_key.public_key())).digest()
+    return (
+        _rp_hash(BUNDLE_ID)
+        + b"\x41"
+        + counter.to_bytes(4, "big")
+        + _PRODUCTION_AAGUID
+        + len(cred_id).to_bytes(2, "big")
+        + cred_id
+        + _cose_key(cose_key)
+    )
+
+
+def _hand_built_attestation(root, *, auth_data: bytes, leaf_key) -> bytes:
+    leaf = _make_cert(
+        signer=root,
+        public_key=leaf_key.public_key(),
+        cn="hand-built",
+        nonce_value=_nonce_extension(auth_data, _NONCE, _SERVER_CHALLENGE),
+    )
+    return cbor2.dumps(
+        {
+            "fmt": "apple",
+            "attStmt": {"x5c": [leaf.public_bytes(serialization.Encoding.DER)]},
+            "authData": auth_data,
+        }
+    )
+
+
+def test_verify_attestation_credential_key_mismatch(root) -> None:
+    # credId hashes the leaf key while authData's COSE key is a *different*
+    # key: the attested pair and the certified key are not one (spec §2.2 3.3).
+    leaf_key = ec.generate_private_key(ec.SECP256R1())
+    other_key = ec.generate_private_key(ec.SECP256R1())
+    auth_data = _hand_built_auth_data(leaf_key=leaf_key, cose_key=other_key.public_key(), counter=0)
+    attestation = _hand_built_attestation(root, auth_data=auth_data, leaf_key=leaf_key)
+    with pytest.raises(AttestError) as exc:
+        _verify_bound(attestation, root)
+    assert exc.value.code == "credential_key_mismatch"
+
+
+def test_verify_attestation_counter_nonzero(root) -> None:
+    # Attestation authData carries counter 0; counters advance only in
+    # assertions (spec §2.2 step 3.5). mint_attestation hardcodes 0, so this
+    # authData is built by hand.
+    cred_key = ec.generate_private_key(ec.SECP256R1())
+    auth_data = _hand_built_auth_data(leaf_key=cred_key, cose_key=cred_key.public_key(), counter=1)
+    attestation = _hand_built_attestation(root, auth_data=auth_data, leaf_key=cred_key)
+    with pytest.raises(AttestError) as exc:
+        _verify_bound(attestation, root)
+    assert exc.value.code == "counter_nonzero"
+
+
+def test_verify_attestation_binding_bad_chain_key(root) -> None:
+    # The leaf's own public key is not EC: it has no X9.62 point to derive
+    # the credentialId from. The chain still verifies (the root signs it).
+    rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    cred_key = ec.generate_private_key(ec.SECP256R1())
+    auth_data = _hand_built_auth_data(leaf_key=cred_key, cose_key=cred_key.public_key(), counter=0)
+    attestation = _hand_built_attestation(root, auth_data=auth_data, leaf_key=rsa_key)
+    with pytest.raises(AttestError) as exc:
+        _verify_bound(attestation, root)
+    assert exc.value.code == "bad_chain_key"
 
 
 # -- _extract_credential: authData parsing internals ---------------------------
@@ -386,6 +678,7 @@ def test_verify_assertion_valid(root) -> None:
         credential=credential,
         nonce=b"nonce-1",
         server_challenge=b"challenge-1",
+        expected_rp_id=BUNDLE_ID,
     )
     assert counter == 2
 
@@ -401,6 +694,7 @@ def test_verify_assertion_accepts_trailing_auth_data_bytes(root) -> None:
         credential=credential,
         nonce=b"n",
         server_challenge=b"s",
+        expected_rp_id=BUNDLE_ID,
     )
     assert counter == 2
 
@@ -409,7 +703,13 @@ def test_verify_assertion_auth_data_too_short(root) -> None:
     credential, _ = _credential(root)
     payload = cbor2.dumps({"signature": b"\x00" * 64, "authenticatorData": b"\x00" * 36})
     with pytest.raises(AttestError) as exc:
-        verify_assertion(payload, credential=credential, nonce=b"n", server_challenge=b"s")
+        verify_assertion(
+            payload,
+            credential=credential,
+            nonce=b"n",
+            server_challenge=b"s",
+            expected_rp_id=BUNDLE_ID,
+        )
     assert exc.value.code == "auth_data_short"
 
 
@@ -433,7 +733,13 @@ def test_verify_assertion_auth_data_too_short(root) -> None:
 def test_verify_assertion_malformed(root, payload: bytes) -> None:
     credential, _ = _credential(root)
     with pytest.raises(AttestError) as exc:
-        verify_assertion(payload, credential=credential, nonce=b"n", server_challenge=b"s")
+        verify_assertion(
+            payload,
+            credential=credential,
+            nonce=b"n",
+            server_challenge=b"s",
+            expected_rp_id=BUNDLE_ID,
+        )
     assert exc.value.code == "malformed_assertion"
 
 
@@ -446,6 +752,7 @@ def test_verify_assertion_wrong_signer(root) -> None:
             credential=credential,
             nonce=b"n",
             server_challenge=b"s",
+            expected_rp_id=BUNDLE_ID,
         )
     assert exc.value.code == "assertion_signature_invalid"
 
@@ -459,6 +766,7 @@ def test_verify_assertion_wrong_nonce(root) -> None:
             credential=credential,
             nonce=b"wrong",
             server_challenge=b"s",
+            expected_rp_id=BUNDLE_ID,
         )
     assert exc.value.code == "assertion_signature_invalid"
 
@@ -472,8 +780,25 @@ def test_verify_assertion_wrong_server_challenge(root) -> None:
             credential=credential,
             nonce=b"n",
             server_challenge=b"wrong",
+            expected_rp_id=BUNDLE_ID,
         )
     assert exc.value.code == "assertion_signature_invalid"
+
+
+def test_verify_assertion_app_id_mismatch(root) -> None:
+    # The assertion's own rpIdHash is re-checked against the configured bundle
+    # ID before the signature (spec §2.2 step 4).
+    credential, cred_key = _credential(root)
+    assertion = mint_assertion(cred_key, nonce="n", server_challenge="s", rp_id=OTHER_BUNDLE_ID)
+    with pytest.raises(AttestError) as exc:
+        verify_assertion(
+            base64.b64decode(assertion),
+            credential=credential,
+            nonce=b"n",
+            server_challenge=b"s",
+            expected_rp_id=BUNDLE_ID,
+        )
+    assert exc.value.code == "app_id_mismatch"
 
 
 # -- load_attest_root ----------------------------------------------------------
