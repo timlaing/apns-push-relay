@@ -195,13 +195,19 @@ def _point(public: ec.EllipticCurvePublicKey) -> bytes:
     )
 
 
-def _nonce_extension(auth_data: bytes, nonce: str, server_challenge: str) -> bytes:
-    """Apple's credCert nonce extension (OID 1.2.840.113635.100.8.2): a DER
-    SEQUENCE { OCTET STRING } wrapping SHA256(authData ‖ clientDataHash),
-    where clientDataHash = SHA256(nonce ‖ serverChallenge)."""
+def _nonce_extension(
+    auth_data: bytes, nonce: str, server_challenge: str, *, explicit_tag: bool = True
+) -> bytes:
+    """Apple's credCert nonce extension (OID 1.2.840.113635.100.8.2): SHA256(
+    authData ‖ clientDataHash), clientDataHash = SHA256(nonce ‖ serverChallenge),
+    DER-framed. Apple's observed framing is SEQUENCE { [1] EXPLICIT OCTET
+    STRING } (30 24 A1 22 04 20 — what python-fido2's [6:] skip assumes);
+    ``explicit_tag=False`` emits the plain SEQUENCE { OCTET STRING } form,
+    which the relay also accepts."""
     client_data_hash = hashlib.sha256((nonce + server_challenge).encode()).digest()
     digest = hashlib.sha256(auth_data + client_data_hash).digest()
-    return b"\x30\x22\x04\x20" + digest
+    header = b"\x30\x24\xa1\x22\x04\x20" if explicit_tag else b"\x30\x22\x04\x20"
+    return header + digest
 
 
 def _make_cert(
@@ -256,6 +262,7 @@ def mint_attestation(
     expired_leaf: bool = False,
     intermediate: bool = False,
     aaguid: bytes = AAGUID_BY_ATTEST_ENV["production"],
+    explicit_nonce_tag: bool = True,
 ) -> tuple[str, EllipticCurvePrivateKey]:
     """Fabricate a valid Apple-format attestation object (b64 CBOR).
 
@@ -279,7 +286,9 @@ def mint_attestation(
         + cred_id
         + _cose_key(cred_key.public_key())
     )
-    nonce_value = _nonce_extension(auth_data, nonce, server_challenge)
+    nonce_value = _nonce_extension(
+        auth_data, nonce, server_challenge, explicit_tag=explicit_nonce_tag
+    )
 
     if expired_leaf:
         now = datetime.now(UTC)
