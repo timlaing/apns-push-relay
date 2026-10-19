@@ -1,12 +1,13 @@
 site_name: apns-push-relay
 site_description: Generic, self-hostable APNs push relay — signed requests in, APNs out
-site_url: https://push.example.org
+site_url: https://timlaing.github.io/apns-push-relay/
 repo_url: https://github.com/timlaing/apns-push-relay
 repo_name: timlaing/apns-push-relay
 edit_uri: edit/main/docs/
 
-# Custom domain comes from `server.docs_domain` in config.yaml (PLAN §7) —
-# keep docs/CNAME and site_url in sync when changing it.
+# Docs are served from GitHub Pages at the project's own github.io URL.
+# When a custom `server.docs_domain` (PLAN §7) has real DNS, re-add
+# docs/CNAME and point site_url at it to keep the two in sync.
 site_dir: site
 
 theme:
