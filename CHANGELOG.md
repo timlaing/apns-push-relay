@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-20
+
 ### Added
 
 - **`relay monitor`**: a live rich dashboard — health, apps, quotas, the
@@ -164,7 +166,8 @@ and this project adheres to [Semantic Versioning].
   enrollment spec's Status/Version/Applies-to/License header lines merged
   into a single run-on paragraph.
 
-[Unreleased]: https://github.com/timlaing/apns-push-relay/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/timlaing/apns-push-relay/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.3.0
 [0.2.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.2.0
 [0.1.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.1.0
 [Keep a Changelog]: https://keepachangelog.com/en/1.1.0/
