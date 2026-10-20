@@ -186,7 +186,8 @@ docker compose exec relay relay metrics             # Prometheus text
   digests and blind indexes, never raw tokens or payloads.
 - Upgrades: `git pull && docker compose -f deploy/docker-compose.yml
 pull && … up -d` for the image path (or `… up -d --build` on a source
-  build); `RELAY_TAG=<version>` in `.env` pins a release. Doctor
+  build); `docker compose pull` tracks `latest` — GHCR also publishes
+  per-version and sha tags if you prefer to pin. Doctor
   pre-flight gates the swap.
 
 ## App Attest roots

@@ -164,10 +164,13 @@ def test_relay_mounts_instance_dir_rw_keys_stay_ro() -> None:
 
 def test_relay_service_prefers_the_published_image() -> None:
     """The published GHCR image is the primary run path; build: stays as the
-    from-source fallback (compose builds when no image is available)."""
+    from-source fallback (compose builds when no image is available). The
+    image tracks `latest` — no tag interpolation — so image updaters
+    (Watchtower, What's Up Docker) can see releases."""
     relay = _compose()["services"]["relay"]
-    assert relay["image"].startswith("ghcr.io/timlaing/apns-push-relay:")
+    assert relay["image"] == "ghcr.io/timlaing/apns-push-relay:latest"
     assert "build" in relay
+    assert "RELAY_TAG" not in (DEPLOY / "docker-compose.yml").read_text()
 
 
 def test_certbot_present_with_issue_and_renewal_wiring() -> None:

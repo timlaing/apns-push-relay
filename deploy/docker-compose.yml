@@ -76,10 +76,12 @@ services:
       - relay-net
 
   relay:
-    # Published image (GHCR, one tag per v* release; RELAY_TAG pins another).
+    # Published image on GHCR, tracking `latest` so image updaters
+    # (Watchtower, What's Up Docker, …) see every release; GHCR also
+    # publishes per-version and sha tags if you prefer to pin.
     # `docker compose pull` fetches it; when no image is available, compose
     # builds from the checkout instead (build: below, or `up --build`).
-    image: ghcr.io/timlaing/apns-push-relay:${RELAY_TAG:-0.1.0}
+    image: ghcr.io/timlaing/apns-push-relay:latest
     build:
       context: ..
       dockerfile: deploy/Dockerfile
