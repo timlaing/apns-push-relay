@@ -11,12 +11,15 @@ from __future__ import annotations
 import hmac
 import time
 from importlib.metadata import version
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from .errors import BadRequest, NotFound, Unauthorized
-from .models import AdminDenylistEntry, AdminReissueRequest, AdminTenantRef
+from . import configedit
+from .config import ConfigError
+from .errors import BadRequest, Conflict, NotFound, Unauthorized
+from .models import AdminAppEntry, AdminDenylistEntry, AdminReissueRequest, AdminTenantRef
 from .signing import mint_tenant_token, token_digest
 
 if TYPE_CHECKING:
@@ -142,5 +145,59 @@ def admin_router(state: AppState) -> APIRouter:
         errors: bool = Query(default=False),
     ) -> dict:
         return {"events": state.events.recent(since=since, errors_only=errors)}
+
+    # -- config-file app management (the file is the source of truth; the
+    # running state picks changes up on restart) -----------------------------
+
+    def _config_file() -> Path:
+        if state.config_path is None:
+            raise BadRequest("no_config_file", "server did not boot from a config file")
+        return state.config_path
+
+    @router.get("/apps", dependencies=[admin])
+    async def apps() -> dict:
+        """The config file's apps, entries as written (config-shaped)."""
+        return {"apps": configedit.list_apps(_config_file())}
+
+    @router.get("/keys", dependencies=[admin])
+    async def keys() -> dict:
+        """APNs signing key ids present beside the config (keys/AuthKey_*.p8)."""
+        return {"keys": configedit.discover_keys(_config_file())}
+
+    @router.post("/apps", dependencies=[admin], status_code=201)
+    async def apps_add(body: AdminAppEntry) -> dict:
+        config_path = _config_file()
+        entry: dict = body.model_dump()
+        if not entry["display_name"]:
+            entry["display_name"] = entry["id"]
+        if not entry["kinds"]:
+            entry["kinds"] = (
+                ["alert", "background", "liveActivity"]
+                if entry["live_activity"]
+                else ["alert", "background"]
+            )
+        if any(app.get("id") == entry["id"] for app in configedit.list_apps(config_path)):
+            raise Conflict("app_exists", f"app id {entry['id']!r} already exists")
+        # operator-facing defaults live with the config format, not the API
+        entry["registration"] = {"callback_required": False}
+        entry["quota"] = dict(configedit.DEFAULT_QUOTA)
+        entry["grant_ttl"] = dict(configedit.DEFAULT_GRANT_TTL)
+        try:
+            configedit.add_app(config_path, entry)
+        except ConfigError as exc:
+            raise BadRequest("invalid_app", str(exc)) from None
+        return {"app": entry, "restartRequired": True}
+
+    @router.delete("/apps/{app_id}", dependencies=[admin])
+    async def apps_remove(app_id: str) -> dict:
+        config_path = _config_file()
+        if not any(app.get("id") == app_id for app in configedit.list_apps(config_path)):
+            raise NotFound("unknown_app")
+        try:
+            configedit.remove_app(config_path, app_id)
+        except ConfigError as exc:
+            # the last-app guard: the config must keep at least one app
+            raise BadRequest("last_app", str(exc)) from None
+        return {"removed": app_id, "restartRequired": True}
 
     return router

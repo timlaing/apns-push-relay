@@ -80,8 +80,8 @@ upstream proxy.
   the admin API via the CLI above (`docker compose exec`) or
   `http://127.0.0.1:8000` on the host.
 - **Onboard an app**: drop its `.p8` in `keys/`, then run
-  `docker compose exec -u root relay relay app add` (interactive key
-  picker; edits `config.yaml` and writes `config.yaml.bak` on the host —
-  the deploy dir is mounted read-write, keys stay read-only) and
-  `docker compose restart relay`. Host-side alternative from a
-  checkout: `uv run relay app add --config config.yaml`.
+  `docker compose exec relay relay app add` (interactive key picker;
+  the CLI calls the admin API and the relay process edits `config.yaml`
+  on the mounted deploy dir — comments preserved, `config.yaml.bak`
+  written, keys stay read-only) and `docker compose restart relay` to
+  load it.

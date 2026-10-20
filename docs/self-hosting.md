@@ -166,13 +166,15 @@ docker compose exec relay relay metrics             # metric table (--json / --p
   CLI's default target). The public listener has no `/admin` routes at
   all, and **nginx returns 404 for `/admin`**.
 - **Adding or removing apps**: `relay app add` (interactively picks from
-  `keys/AuthKey_*.p8`) and `relay app remove` edit `config.yaml` offline,
-  preserving comments and writing a `.bak`. The deploy directory is
-  mounted read-write (keys stay read-only), so run them inside the
-  container — `docker compose exec -u root relay relay app add` — then
-  `docker compose restart relay` (doctor re-runs at boot). From a
-  checkout, `uv run relay app add --config deploy/config.yaml` works
-  too (`--config` beats `$RELAY_CONFIG`).
+  the server's `keys/AuthKey_*.p8`) and `relay app remove` go through
+  the admin API — the relay process edits `config.yaml`, preserving
+  comments and writing a `.bak`. Run them inside the container
+  (`docker compose exec relay relay app add`; the CLI only makes API
+  calls, so no elevated user is needed) and then
+  `docker compose restart relay` (config is loaded at boot; doctor
+  re-runs there). From the host, export `RELAY_ADMIN_TOKEN` and point
+  `RELAY_API_URL` at `http://127.0.0.1:8000` to drive the same
+  commands.
 - **Interactive API docs**: set `swagger_ui: true` under `server:` in
   `config.yaml` to serve Swagger UI at `/docs`, ReDoc at `/redoc` and the
   schema at `/openapi.json` on the API domain (off by default — the

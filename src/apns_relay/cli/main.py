@@ -36,7 +36,6 @@ from rich.text import Text
 from typer import _click as _vendored_click  # typer >= 0.27 vendors click
 
 from .. import attest as attest_mod
-from .. import configedit
 from ..apns import KeyRegistry
 from ..app import DEFAULT_CONFIG, load_issuer_key
 from ..attest import AttestError, fetch_attest_root, load_attest_root
@@ -126,17 +125,10 @@ def _guard(fn: Any) -> Any:
     return wrapper
 
 
-def _config_path(override: Path | None = None) -> Path:
-    """--config flag, else $RELAY_CONFIG, else the container default."""
-    return override or Path(os.environ.get("RELAY_CONFIG", DEFAULT_CONFIG))
-
-
-_CONFIG_OPT = typer.Option(
-    None,
-    "--config",
-    "-c",
-    help="config.yaml path (default: $RELAY_CONFIG, else /etc/apns-relay/config.yaml)",
-)
+def _config_path() -> Path:
+    """$RELAY_CONFIG, else the container default (offline checks only —
+    app management goes through the admin API)."""
+    return Path(os.environ.get("RELAY_CONFIG", DEFAULT_CONFIG))
 
 
 def _duration_to_seconds(value: str) -> int:
@@ -736,13 +728,14 @@ def denylist_add(
 @config_app.command("list")
 @_guard
 def app_list(ctx: typer.Context) -> None:
-    """List apps from config.yaml (offline)."""
+    """List apps from config.yaml."""
     del ctx
-    entries = configedit.list_apps(_config_path())
+    with _api_client(_TRANSPORT) as client:
+        data = _call(client, "GET", "/admin/apps")
     table = Table(box=box.SIMPLE)
     for column in ("id", "bundle_id", "team_id", "key_id", "environments"):
         table.add_column(column)
-    for entry in entries:
+    for entry in data["apps"]:
         environments = entry.get("environments", [])
         table.add_row(
             str(entry.get("id", "")),
@@ -770,11 +763,9 @@ def app_add(
     kind: list[str] = typer.Option([], "--kind", help="alert|background|liveActivity (repeatable)"),
     live_activity: bool = typer.Option(True, "--live-activity/--no-live-activity"),
     yes: bool = typer.Option(False, "--yes", "-y", help="accept defaults, no prompts"),
-    config: Path | None = _CONFIG_OPT,
 ) -> None:
-    """Add an app to config.yaml (picks from keys/ when --key-id is omitted)."""
+    """Add an app to config.yaml (picks a key when --key-id is omitted)."""
     del ctx
-    config_path = _config_path(config)
     if yes:
         missing = [
             flag
@@ -792,11 +783,11 @@ def app_add(
     if not team_id:
         team_id = typer.prompt("Apple Team ID (10 chars)")
     if not key_id:
-        available = configedit.discover_keys(config_path)
+        with _api_client(_TRANSPORT) as client:
+            available = _call(client, "GET", "/admin/keys")["keys"]
         if not available:
             raise CliError(
-                f"no AuthKey_<KEYID>.p8 found in {configedit.keys_dir(config_path)} —"
-                " drop the key there first"
+                "no AuthKey_<KEYID>.p8 found beside the server's config — drop the key there first"
             )
         out.print("Available keys:")
         for index, candidate in enumerate(available, start=1):
@@ -814,7 +805,7 @@ def app_add(
     kinds = kind or (
         ["alert", "background", "liveActivity"] if live_activity else ["alert", "background"]
     )
-    entry: dict[str, Any] = {
+    body: dict[str, Any] = {
         "id": app_id,
         "display_name": display_name,
         "bundle_id": bundle_id,
@@ -824,20 +815,18 @@ def app_add(
         "kinds": kinds,
         "live_activity": live_activity and "liveActivity" in kinds,
         "attest_environment": attest_environment,
-        "registration": {"callback_required": False},
-        "quota": dict(configedit.DEFAULT_QUOTA),
-        "grant_ttl": dict(configedit.DEFAULT_GRANT_TTL),
     }
     out.print(
         f"Adding {app_id}: bundle={bundle_id} team={team_id} key=AuthKey_{key_id}.p8"
         f" envs={','.join(environments)} kinds={','.join(kinds)}"
         f" attest={attest_environment}"
     )
-    if not yes and not typer.confirm(f"Write {app_id} to {config_path.name}?"):
+    if not yes and not typer.confirm(f"Add {app_id} to config.yaml?"):
         raise typer.Exit(0)
-    configedit.add_app(config_path, entry)
-    out.print(f"[green]ok[/green]    added {app_id} to {config_path} (backup: config.yaml.bak)")
-    out.print("next: relay doctor")
+    with _api_client(_TRANSPORT) as client:
+        _call(client, "POST", "/admin/apps", json=body)
+    out.print(f"[green]ok[/green]    added {app_id} to config.yaml (backup: config.yaml.bak)")
+    out.print("note  restart the relay to apply (running state unchanged until then)")
 
 
 @config_app.command("remove")
@@ -846,15 +835,15 @@ def app_remove(
     ctx: typer.Context,
     app_id: str = typer.Argument(..., help="app id to remove"),
     yes: bool = typer.Option(False, "--yes", "-y", help="no confirmation prompt"),
-    config: Path | None = _CONFIG_OPT,
 ) -> None:
     """Remove an app from config.yaml."""
     del ctx
-    config_path = _config_path(config)
-    if not yes and not typer.confirm(f"Remove {app_id!r} from {config_path.name}?"):
+    if not yes and not typer.confirm(f"Remove {app_id!r} from config.yaml?"):
         raise typer.Exit(0)
-    configedit.remove_app(config_path, app_id)
-    out.print(f"[green]ok[/green]    removed {app_id} from {config_path} (backup: config.yaml.bak)")
+    with _api_client(_TRANSPORT) as client:
+        _call(client, "DELETE", f"/admin/apps/{app_id}")
+    out.print(f"[green]ok[/green]    removed {app_id} from config.yaml (backup: config.yaml.bak)")
+    out.print("note  restart the relay to apply (running state unchanged until then)")
 
 
 # -- entrypoint ---------------------------------------------------------------

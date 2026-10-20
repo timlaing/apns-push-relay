@@ -1093,71 +1093,77 @@ def test_usage_error_without_context_shows_root_help(monkeypatch, capsys) -> Non
     assert "Usage: relay" in err  # falls back to the root help
 
 
-# -- app add / remove / list (config.yaml editing, offline) ----------------------
+# -- app add / remove / list (admin API: /admin/apps) ---------------------------
 
 
 TEAM = "TEAMID0001"
 OTHER_KEY = "ZZZZZZ9999"
 
-
-def _mini_config(tmp_path: Path, apps_yaml: str = "") -> Path:
-    config = tmp_path / "config.yaml"
-    body = f"apps:\n{apps_yaml}" if apps_yaml else "apps: []\n"
-    config.write_text("# operator comment\n" + body)
-    return config
-
-
-def _drop_key(config: Path, key_id: str) -> Path:
-    keys = config.parent / "keys"
-    keys.mkdir(exist_ok=True)
-    path = keys / f"AuthKey_{key_id}.p8"
-    path.write_text("dummy")
-    return path
-
-
-def test_app_list_missing_config_uses_default_path(monkeypatch, capsys) -> None:
-    # RELAY_CONFIG unset → DEFAULT_CONFIG (/etc/apns-relay/config.yaml), absent here
-    assert main(["app", "list"]) == 1
-    err = capsys.readouterr().err
-    assert "error: config file not found" in err
-    assert "Usage: relay app list" in err
+APPS_JSON = {
+    "apps": [
+        {
+            "id": "alpha",
+            "bundle_id": "com.example.alpha",
+            "team_id": TEAM,
+            "key_id": "ABCDEF0123",
+            "environments": ["sandbox", "production"],
+        },
+        {
+            "id": "beta",
+            "bundle_id": "com.example.beta",
+            "team_id": "TEAMID0002",
+            "key_id": OTHER_KEY,
+            "environments": ["production"],
+        },
+    ]
+}
 
 
-def test_app_list_renders_table(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(
-        tmp_path,
-        apps_yaml="""  - id: alpha
-    bundle_id: com.example.alpha
-    team_id: TEAMID0001
-    key_id: ABCDEF0123
-    environments: [sandbox, production]
-  - id: beta
-    bundle_id: com.example.beta
-    team_id: TEAMID0002
-    key_id: ABCDEF0124
-    environments: production
-  - id: gamma
-    bundle_id: com.example.gamma
-    team_id: TEAMID0003
-    key_id: ABCDEF0125
-""",
-    )
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
-    monkeypatch.setenv("COLUMNS", "160")
-    assert main(["app", "list"]) == 0
+def test_app_list_renders_table(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+    monkeypatch.setenv("COLUMNS", "220")  # rich tables: keep rows on one line
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/admin/apps"
+        assert request.headers["authorization"] == f"Bearer {ADMIN_TOKEN}"
+        return httpx.Response(200, json=APPS_JSON)
+
+    assert main(["app", "list"], transport=httpx.MockTransport(handler)) == 0
     out = capsys.readouterr().out
-    assert "alpha" in out and "beta" in out and "gamma" in out
+    assert "apps" in out
+    assert "alpha" in out and "com.example.alpha" in out
     assert "ABCDEF0123" in out
     assert "sandbox, production" in out
-    assert "production" in out  # scalar environments render as-is
+    assert "beta" in out and "TEAMID0002" in out
 
 
-def test_config_flag_only_on_editing_commands(capsys) -> None:
-    """--config belongs to config-EDITING commands (app add/remove);
-    the readers (app list, doctor, fetch-roots) resolve $RELAY_CONFIG /
-    the container default only, so --config there is an unknown option."""
+def test_app_list_requires_admin_token(monkeypatch, capsys) -> None:
+    # app commands are API clients now — no token, no request
+    monkeypatch.delenv("RELAY_ADMIN_TOKEN", raising=False)
+    assert main(["app", "list"]) == 1
+    assert "RELAY_ADMIN_TOKEN is not set" in capsys.readouterr().err
+
+
+def test_config_flag_rejected_on_every_command(capsys) -> None:
+    """--config is gone: app commands go through the admin API, the offline
+    checks resolve $RELAY_CONFIG / the container default only."""
     for argv in (
         ["app", "list", "--config", "x.yaml"],
+        [
+            "app",
+            "add",
+            "--config",
+            "x.yaml",
+            "--yes",
+            "--bundle-id",
+            "com.example.demo",
+            "--team-id",
+            TEAM,
+            "--key-id",
+            "ABCDEF0123",
+        ],
+        ["app", "remove", "alpha", "--config", "x.yaml"],
         ["doctor", "--config", "x.yaml"],
         ["fetch-roots", "--config", "x.yaml"],
     ):
@@ -1165,99 +1171,86 @@ def test_config_flag_only_on_editing_commands(capsys) -> None:
         assert "--config" in capsys.readouterr().err  # unknown option
 
 
-def test_config_flag_app_add_and_remove(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(
-        tmp_path,
-        apps_yaml="""  - id: alpha
-    bundle_id: com.example.alpha
-    team_id: TEAMID0001
-    key_id: ABCDEF0123
-""",
-    )
-    _drop_key(config, "ABCDEF0123")
-    assert (
-        main(
-            [
-                "app",
-                "add",
-                "--config",
-                str(config),
-                "--yes",
-                "--key-id",
-                "ABCDEF0123",
-                "--id",
-                "demo",
-                "--bundle-id",
-                "com.example.demo",
-                "--team-id",
-                TEAM,
-            ]
-        )
-        == 0
-    )
-    assert "bundle_id: com.example.demo" in config.read_text()
-    assert (tmp_path / "config.yaml.bak").is_file()
-    assert main(["app", "remove", "demo", "--yes", "-c", str(config)]) == 0
-    assert "com.example.demo" not in config.read_text()
-    assert "id: alpha" in config.read_text()
+def test_app_add_noninteractive(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
 
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/admin/apps"
+        body = json.loads(request.content)
+        assert body == {
+            "id": "demo",
+            "display_name": "Demo App",
+            "bundle_id": "com.example.demo",
+            "team_id": TEAM,
+            "key_id": "ABCDEF0123",
+            "environments": ["sandbox"],
+            "kinds": ["alert", "background"],
+            "live_activity": False,
+            "attest_environment": "development",
+        }
+        return httpx.Response(201, json={"app": body, "restartRequired": True})
 
-def test_app_add_noninteractive(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path)
-    _drop_key(config, "ABCDEF0123")
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
-    assert (
-        main(
-            [
-                "app",
-                "add",
-                "--yes",
-                "--key-id",
-                "ABCDEF0123",
-                "--id",
-                "demo",
-                "--bundle-id",
-                "com.example.demo",
-                "--team-id",
-                TEAM,
-                "--display-name",
-                "Demo App",
-                "--environment",
-                "sandbox",
-                "--kind",
-                "alert",
-                "--kind",
-                "background",
-                "--no-live-activity",
-                "--attest-environment",
-                "development",
-            ]
-        )
-        == 0
-    )
+    argv = [
+        "app",
+        "add",
+        "--yes",
+        "--key-id",
+        "ABCDEF0123",
+        "--id",
+        "demo",
+        "--bundle-id",
+        "com.example.demo",
+        "--team-id",
+        TEAM,
+        "--display-name",
+        "Demo App",
+        "--environment",
+        "sandbox",
+        "--kind",
+        "alert",
+        "--kind",
+        "background",
+        "--no-live-activity",
+        "--attest-environment",
+        "development",
+    ]
+    assert main(argv, transport=httpx.MockTransport(handler)) == 0
     out = capsys.readouterr().out
     assert "added demo" in out
-    assert "next: relay doctor" in out
-    text = config.read_text()
-    assert "key_id: ABCDEF0123" in text
-    assert "bundle_id: com.example.demo" in text
-    assert "attest_environment: development" in text
-    assert (tmp_path / "config.yaml.bak").is_file()
+    assert "restart the relay to apply" in out
 
 
-def test_app_add_yes_requires_flags(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path)
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
-    assert main(["app", "add", "--yes", "--bundle-id", "com.example.demo"]) == 1
+def test_app_add_yes_requires_flags(monkeypatch, capsys) -> None:
+    # prompts disabled → identity flags must be present; nothing is sent
+
+    def fail(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no request expected")
+
+    assert (
+        main(
+            ["app", "add", "--yes", "--bundle-id", "com.example.demo"],
+            transport=httpx.MockTransport(fail),
+        )
+        == 1
+    )
     err = capsys.readouterr().err
     assert "--yes requires" in err
     assert "--team-id" in err and "--key-id" in err
 
 
-def test_app_add_yes_derives_id_from_bundle(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path)
-    _drop_key(config, "ABCDEF0123")
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
+def test_app_add_yes_derives_id_from_bundle(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert body["id"] == "demo"  # last bundle component
+        assert body["display_name"] == "demo"
+        assert body["environments"] == ["sandbox", "production"]
+        assert body["kinds"] == ["alert", "background", "liveActivity"]
+        assert body["live_activity"] is True
+        return httpx.Response(201, json={"app": body, "restartRequired": True})
+
     assert (
         main(
             [
@@ -1270,55 +1263,76 @@ def test_app_add_yes_derives_id_from_bundle(tmp_path, monkeypatch, capsys) -> No
                 "com.example.demo",
                 "--team-id",
                 TEAM,
-            ]
+            ],
+            transport=httpx.MockTransport(handler),
         )
         == 0
     )
-    out = capsys.readouterr().out
-    assert "added demo" in out  # id derived from the bundle's last component
-    text = config.read_text()
-    assert "id: demo" in text
-    assert "display_name: demo" in text
-    assert "sandbox" in text and "production" in text
+    assert "added demo" in capsys.readouterr().out
 
 
-def test_app_add_interactive_picks_key(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path)
-    _drop_key(config, "ABCDEF0123")
-    _drop_key(config, OTHER_KEY)
-    (config.parent / "keys" / "notakey.p8").write_text("")  # ignored by the scanner
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
+def test_app_add_interactive_picks_key(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
     monkeypatch.setenv("COLUMNS", "160")
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/admin/keys":
+            # key discovery is the server's: it scans keys/ beside its config
+            return httpx.Response(200, json={"keys": ["ABCDEF0123", OTHER_KEY]})
+        assert request.url.path == "/admin/apps"
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(201, json={"app": seen["body"], "restartRequired": True})
+
     monkeypatch.setattr(sys, "stdin", io.StringIO("com.example.demo\nTEAMID0001\n1\n\ny\n"))
-    assert main(["app", "add"]) == 0
+    assert main(["app", "add"], transport=httpx.MockTransport(handler)) == 0
     out = capsys.readouterr().out
     assert "Available keys:" in out
     assert "1. AuthKey_ABCDEF0123.p8" in out
     assert f"2. AuthKey_{OTHER_KEY}.p8" in out
     assert "added demo" in out
-    assert "key_id: ABCDEF0123" in config.read_text()
+    assert seen["body"]["key_id"] == "ABCDEF0123"  # type: ignore[index]
 
 
-def test_app_add_invalid_key_number(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path)
-    _drop_key(config, "ABCDEF0123")
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
+def test_app_add_invalid_key_number(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"keys": ["ABCDEF0123"]})
+
     monkeypatch.setattr(sys, "stdin", io.StringIO("9\n"))
-    assert main(["app", "add", "--bundle-id", "com.example.demo", "--team-id", TEAM]) == 1
+    assert (
+        main(
+            ["app", "add", "--bundle-id", "com.example.demo", "--team-id", TEAM],
+            transport=httpx.MockTransport(handler),
+        )
+        == 1
+    )
     assert "expected a key number 1..1" in capsys.readouterr().err
 
 
-def test_app_add_no_keys_errors(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path)  # no keys/ directory
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
-    assert main(["app", "add", "--bundle-id", "com.example.demo", "--team-id", TEAM]) == 1
+def test_app_add_no_keys_errors(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"keys": []})
+
+    assert (
+        main(
+            ["app", "add", "--bundle-id", "com.example.demo", "--team-id", TEAM],
+            transport=httpx.MockTransport(handler),
+        )
+        == 1
+    )
     assert "no AuthKey_<KEYID>.p8 found" in capsys.readouterr().err
 
 
-def test_app_add_declined_confirmation(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path)
-    _drop_key(config, "ABCDEF0123")
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
+def test_app_add_declined_confirmation(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no POST after a declined prompt")
+
     monkeypatch.setattr(sys, "stdin", io.StringIO("n\n"))
     assert (
         main(
@@ -1333,32 +1347,33 @@ def test_app_add_declined_confirmation(tmp_path, monkeypatch, capsys) -> None:
                 "com.example.demo",
                 "--team-id",
                 TEAM,
-            ]
+            ],
+            transport=httpx.MockTransport(handler),
         )
         == 0
     )
-    out = capsys.readouterr().out
-    assert "added" not in out
-    assert config.read_text() == "# operator comment\napps: []\n"  # unchanged
+    assert "added" not in capsys.readouterr().out
 
 
-def test_app_add_eof_aborts(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path)
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
+def test_app_add_eof_aborts(monkeypatch, capsys) -> None:
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))  # EOF at the first prompt
-    assert main(["app", "add"]) == 1
+    assert main(["app", "add"], transport=httpx.MockTransport(_no_network)) == 1
     assert "aborted" in capsys.readouterr().err
 
 
-def test_app_add_write_error_reports_oserror(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path)
-    _drop_key(config, "ABCDEF0123")
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
+def test_app_add_api_error_surfaces_detail(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+    monkeypatch.setenv("COLUMNS", "220")  # the Error panel must not wrap the detail
 
-    def boom(_src, _dst) -> None:
-        raise OSError("Read-only file system")  # e.g. the container's :ro config mount
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            json={
+                "error": "invalid_app",
+                "detail": "bundle_id: must look like a reverse-DNS identifier",
+            },
+        )
 
-    monkeypatch.setattr(cli_main.configedit.shutil, "copy2", boom)
     assert (
         main(
             [
@@ -1373,46 +1388,60 @@ def test_app_add_write_error_reports_oserror(tmp_path, monkeypatch, capsys) -> N
                 "com.example.demo",
                 "--team-id",
                 TEAM,
-            ]
+            ],
+            transport=httpx.MockTransport(handler),
         )
         == 1
     )
     err = capsys.readouterr().err
-    assert "error: Read-only file system" in err
-    assert "Usage: relay app add" in err
+    assert "invalid_app" in err
+    assert "reverse-DNS" in err
+    assert "Usage: relay app add" in err  # errors still teach the command
 
 
-def test_app_remove_declined_confirmation(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path, apps_yaml="  - id: alpha\n  - id: beta\n")
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
+def test_app_remove_declined_confirmation(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("no DELETE after a declined prompt")
+
     monkeypatch.setattr(sys, "stdin", io.StringIO("n\n"))
-    assert main(["app", "remove", "alpha"]) == 0
-    out = capsys.readouterr().out
-    assert "removed" not in out
-    text = config.read_text()
-    assert "alpha" in text and "beta" in text  # unchanged
+    assert main(["app", "remove", "alpha"], transport=httpx.MockTransport(handler)) == 0
+    assert "removed" not in capsys.readouterr().out
 
 
-def test_app_remove_yes(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path, apps_yaml="  - id: alpha\n  - id: beta\n")
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
-    assert main(["app", "remove", "alpha", "--yes"]) == 0
+def test_app_remove_yes(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "DELETE"
+        assert request.url.path == "/admin/apps/alpha"
+        return httpx.Response(200, json={"removed": "alpha", "restartRequired": True})
+
+    assert main(["app", "remove", "alpha", "--yes"], transport=httpx.MockTransport(handler)) == 0
     out = capsys.readouterr().out
     assert "removed alpha" in out
-    text = config.read_text()
-    assert "alpha" not in text and "beta" in text
-    assert (tmp_path / "config.yaml.bak").is_file()
+    assert "restart the relay to apply" in out
 
 
-def test_app_remove_unknown_id_errors(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path, apps_yaml="  - id: alpha\n  - id: beta\n")
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
-    assert main(["app", "remove", "ghost", "--yes"]) == 1
-    assert "no app with id 'ghost'" in capsys.readouterr().err
+def test_app_remove_unknown_id_errors(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"error": "unknown_app"})
+
+    assert main(["app", "remove", "ghost", "--yes"], transport=httpx.MockTransport(handler)) == 1
+    assert "unknown_app" in capsys.readouterr().err
 
 
-def test_app_remove_last_app_refused(tmp_path, monkeypatch, capsys) -> None:
-    config = _mini_config(tmp_path, apps_yaml="  - id: alpha\n")
-    monkeypatch.setenv("RELAY_CONFIG", str(config))
-    assert main(["app", "remove", "alpha", "--yes"]) == 1
-    assert "refusing to remove" in capsys.readouterr().err
+def test_app_remove_last_app_refused(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400, json={"error": "last_app", "detail": "refusing to remove the last app"}
+        )
+
+    assert main(["app", "remove", "alpha", "--yes"], transport=httpx.MockTransport(handler)) == 1
+    err = capsys.readouterr().err
+    assert "refusing to remove" in err

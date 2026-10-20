@@ -17,8 +17,10 @@ from tests.conftest import (
     APP_ID,
     DEFAULT_QUOTA,
     KEY_ID,
+    MASTER_SECRET,
     OTHER_APP_ID,
     OTHER_TENANT_ID,
+    TEAM_ID,
     TENANT_ID,
     do_push,
     enroll,
@@ -61,7 +63,14 @@ def test_status_rejects_bad_admin_token(env, headers: dict[str, str]) -> None:
 
 
 def test_admin_token_shared_across_routes(env) -> None:
-    for path in ("/admin/status", "/admin/tenants", "/admin/denylist", "/admin/logs"):
+    for path in (
+        "/admin/status",
+        "/admin/tenants",
+        "/admin/denylist",
+        "/admin/logs",
+        "/admin/apps",
+        "/admin/keys",
+    ):
         assert _get(env, path).status_code == 200, path
     # a wrong token fails on a route the pass-case didn't cover — same dependency
     denied = env.client.get(
@@ -365,6 +374,148 @@ def test_logs_since_filter(clock, env) -> None:
     assert future.json() == {"events": []}
 
 
+# -- config-file app management (/admin/apps, /admin/keys) -----------------------
+
+
+def test_apps_lists_the_config_entries(env) -> None:
+    response = _get(env, "/admin/apps")
+    assert response.status_code == 200
+    apps = response.json()["apps"]
+    assert [app["id"] for app in apps] == [APP_ID, OTHER_APP_ID]
+    entry = apps[0]
+    assert entry["bundle_id"] and entry["team_id"] and entry["key_id"] == KEY_ID
+
+
+def test_keys_lists_the_authkeys_beside_the_config(env) -> None:
+    response = _get(env, "/admin/keys")
+    assert response.status_code == 200
+    assert response.json()["keys"] == [KEY_ID]  # only AuthKey_TESTKEYID1.p8 on disk
+
+
+def test_apps_add_writes_the_file_with_server_defaults(env) -> None:
+    body = {
+        "id": "newapp",
+        "bundle_id": "com.example.newapp",
+        "team_id": TEAM_ID,
+        "key_id": KEY_ID,
+        "display_name": "New App",
+    }
+    response = _post(env, "/admin/apps", body)
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["restartRequired"] is True
+    app = payload["app"]
+    assert app["environments"] == ["sandbox", "production"]
+    assert app["kinds"] == ["alert", "background", "liveActivity"]
+    assert app["quota"] == {"burst_per_min": 60, "daily": 10000, "token_burst_per_min": 30}
+    assert app["grant_ttl"]["default"] > 0
+    assert app["registration"] == {"callback_required": False}
+    # the file picked it up, and the first edit wrote a backup
+    ids = [item["id"] for item in _get(env, "/admin/apps").json()["apps"]]
+    assert ids == [APP_ID, OTHER_APP_ID, "newapp"]
+    config_path = env.state.config_path
+    assert (config_path.parent / f"{config_path.name}.bak").is_file()
+
+
+def test_apps_add_respects_explicit_lists(env) -> None:
+    response = _post(
+        env,
+        "/admin/apps",
+        {
+            "id": "bgapp",
+            "bundle_id": "com.example.bg",
+            "team_id": TEAM_ID,
+            "key_id": KEY_ID,
+            "kinds": ["alert", "background"],
+            "live_activity": False,
+            "environments": ["production"],
+        },
+    )
+    assert response.status_code == 201
+    app = response.json()["app"]
+    assert app["kinds"] == ["alert", "background"]  # sent, not derived
+    assert app["live_activity"] is False
+    assert app["environments"] == ["production"]
+
+
+def test_apps_add_rejects_an_existing_id(env) -> None:
+    response = _post(
+        env,
+        "/admin/apps",
+        {"id": APP_ID, "bundle_id": "com.example.other", "team_id": TEAM_ID, "key_id": KEY_ID},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"] == "app_exists"
+
+
+def test_apps_add_rejects_a_missing_key_file(env) -> None:
+    response = _post(
+        env,
+        "/admin/apps",
+        {
+            "id": "nokeyapp",
+            "bundle_id": "com.example.nokey",
+            "team_id": TEAM_ID,
+            "key_id": "ZZZZZZ9999",
+        },
+    )
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["error"] == "invalid_app"
+    assert "AuthKey_ZZZZZZ9999.p8 not found" in payload["detail"]
+
+
+def test_apps_add_validates_the_body(env) -> None:
+    bad = {"id": "newapp", "bundle_id": "not a bundle", "team_id": "short", "key_id": KEY_ID}
+    assert _post(env, "/admin/apps", bad).status_code == 422
+    ok = {
+        "id": "newapp",
+        "bundle_id": "com.example.newapp",
+        "team_id": TEAM_ID,
+        "key_id": KEY_ID,
+    }
+    assert _post(env, "/admin/apps", {**ok, "surprise": 1}).status_code == 422  # Strict
+
+
+def test_apps_delete_round_trip(env) -> None:
+    response = env.client.delete(f"/admin/apps/{OTHER_APP_ID}", headers=ADMIN_HEADERS)
+    assert response.status_code == 200
+    assert response.json() == {"removed": OTHER_APP_ID, "restartRequired": True}
+    ids = [item["id"] for item in _get(env, "/admin/apps").json()["apps"]]
+    assert ids == [APP_ID]
+    config_path = env.state.config_path
+    assert (config_path.parent / f"{config_path.name}.bak").is_file()
+
+
+def test_apps_delete_unknown_404(env) -> None:
+    response = env.client.delete("/admin/apps/ghost", headers=ADMIN_HEADERS)
+    assert response.status_code == 404
+    assert response.json() == {"error": "unknown_app"}
+
+
+def test_apps_delete_last_app_refused(env) -> None:
+    first = env.client.delete(f"/admin/apps/{APP_ID}", headers=ADMIN_HEADERS)
+    assert first.status_code == 200  # two → one
+    response = env.client.delete(f"/admin/apps/{OTHER_APP_ID}", headers=ADMIN_HEADERS)
+    assert response.status_code == 400
+    assert response.json()["error"] == "last_app"
+    ids = [item["id"] for item in _get(env, "/admin/apps").json()["apps"]]
+    assert ids == [OTHER_APP_ID]  # the file keeps its last app
+
+
+def test_apps_endpoints_require_a_config_file(env) -> None:
+    from fastapi.testclient import TestClient
+
+    from apns_relay.app import create_app
+
+    # a programmatically-built server (config passed in, no file on disk)
+    app = create_app(env.config, master_secret=MASTER_SECRET, store=env.store)
+    with TestClient(app) as client:
+        response = client.get("/admin/apps", headers=ADMIN_HEADERS)
+    assert response.status_code == 400
+    assert response.json()["error"] == "no_config_file"
+
+
 # -- privacy sweep ---------------------------------------------------------------------
 
 
@@ -381,6 +532,8 @@ def test_admin_responses_never_contain_secret_material(env) -> None:
         f"/admin/tenants/verify?tenant={TENANT_ID}",
         "/admin/denylist",
         "/admin/logs",
+        "/admin/apps",
+        "/admin/keys",
     ]
     bodies: list[str] = []
     for path in paths:

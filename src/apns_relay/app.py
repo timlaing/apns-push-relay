@@ -68,6 +68,9 @@ class AppState:
     metrics: Metrics = field(default_factory=Metrics)
     events: EventLog = field(default_factory=EventLog)
     limiter: RateLimiter = field(default_factory=RateLimiter)
+    # The config file backing this run — set when booted from $RELAY_CONFIG
+    # (or passed explicitly); lets /admin/apps edit the live config.
+    config_path: Path | None = None
     started_at: float = field(default_factory=time.time)
     last_prune: float = 0.0
     prune_interval: float = 3600.0
@@ -108,6 +111,7 @@ def build_state(
     store: Store | None = None,
     sender: APNsSender | None = None,
     callback_client: httpx.AsyncClient | None = None,
+    config_path: Path | None = None,
 ) -> AppState:
     """Construct state; key loading + JWT pre-signature fail fast at boot."""
     if len(master_secret) < 32:
@@ -126,16 +130,17 @@ def build_state(
         issuer_id=issuer_id,
         master_secret=master_secret,
         callback_client=callback_client,
+        config_path=config_path,
     )
 
 
-def _from_env() -> tuple[RelayConfig, bytes]:
-    path = os.environ.get("RELAY_CONFIG", DEFAULT_CONFIG)
-    config = load_config(path, admin_token=os.environ.get("RELAY_ADMIN_TOKEN"))
+def _from_env() -> tuple[RelayConfig, bytes, Path]:
+    path = Path(os.environ.get("RELAY_CONFIG", DEFAULT_CONFIG))
+    config = load_config(str(path), admin_token=os.environ.get("RELAY_ADMIN_TOKEN"))
     secret = os.environ.get("RELAY_MASTER_SECRET", "")
     if len(secret) < 32:
         raise ConfigError("RELAY_MASTER_SECRET must be at least 32 characters")
-    return config, secret.encode()
+    return config, secret.encode(), path
 
 
 def create_app(
@@ -147,11 +152,12 @@ def create_app(
     callback_client: httpx.AsyncClient | None = None,
     public: bool = True,
     admin: bool = True,
+    config_path: Path | None = None,
 ) -> FastAPI:
     """Assemble the app. Both sides default on (single-listener runs); the
     compose deployment splits them — see ``create_listeners``."""
     if config is None:
-        config, master_secret = _from_env()
+        config, master_secret, config_path = _from_env()
     elif master_secret is None:
         raise ValueError("master_secret is required when config is passed explicitly")
     state = build_state(
@@ -160,6 +166,7 @@ def create_app(
         store=store,
         sender=sender,
         callback_client=callback_client,
+        config_path=config_path,
     )
     return _assemble(state, public=public, admin=admin)
 
@@ -171,8 +178,8 @@ def create_listeners() -> tuple[FastAPI, FastAPI]:
     8000, public on 8001): the metrics/event state stays global and SQLite
     keeps its single writer.
     """
-    config, master_secret = _from_env()
-    state = build_state(config, master_secret=master_secret)
+    config, master_secret, config_path = _from_env()
+    state = build_state(config, master_secret=master_secret, config_path=config_path)
     return (
         _assemble(state, public=False, admin=True),
         _assemble(state, public=True, admin=False),

@@ -13,10 +13,11 @@ and this project adheres to [Semantic Versioning].
   metric snapshot and recent requests. `--errors` tails failures only;
   `--once` renders a single frame for scripts.
 - **`relay app add` / `app remove` / `app list`**: manage the `apps:`
-  section of `config.yaml` from the CLI. `add` interactively picks from
-  the `keys/AuthKey_*.p8` files present (fully scriptable with flags +
-  `--yes`); edits preserve comments and write a `config.yaml.bak`
-  backup before each change.
+  section of `config.yaml` via the admin API (`/admin/apps`). `add`
+  interactively picks from the server's `keys/AuthKey_*.p8` (fully
+  scriptable with flags + `--yes`); the server-side edit preserves
+  comments and writes a `config.yaml.bak` backup before each change,
+  and replies flag that a restart applies it.
 - **Behind-proxy mode**: `FORCE_HTTPS=0` (`.env`) makes port 80 serve
   requests arriving with `X-Forwarded-Proto: https` — for stacks behind
   a TLS-terminating reverse proxy — instead of redirecting them. The
@@ -27,11 +28,10 @@ and this project adheres to [Semantic Versioning].
   docs host is the image env `DOCS_DOMAIN` (default: the project's
   GitHub Pages URL), so the `.env` knob is gone.
 - **In-container config management**: compose mounts the deploy
-  directory read-write (keys stay read-only), so `relay app add` /
-  `app remove` run inside the container
-  (`docker compose exec -u root relay …`) edit the live config with
-  host-side backups. `--config`/`-c` selects the config path for the
-  config-editing commands (`app add`, `app remove`).
+  directory read-write (keys stay read-only), and the app commands go
+  through the admin API — `docker compose exec relay relay app add`
+  (no elevated user needed: the CLI makes API calls, the relay process
+  writes the file) edits the live config with host-side backups.
 - **`relay version`** and a `version` row in `relay status` —
   `/admin/status` reports the package version (shown by `monitor` too).
 - **Formatted metrics**: `relay metrics` renders the rich table (the
@@ -45,9 +45,11 @@ and this project adheres to [Semantic Versioning].
 
 ### Changed
 
-- **`--config` only where configs are edited**: `app add` / `app remove`
-  keep `--config`/`-c`; readers (`app list`, `doctor`, `fetch-roots`)
-  resolve `$RELAY_CONFIG` (or the container default) only.
+- **`--config` is gone**: `app add`/`remove`/`list` go through the
+  admin API (the server edits the file it booted from, so the key
+  picker sees the keys beside the server), and the offline readers
+  (`doctor`, `fetch-roots`) resolve `$RELAY_CONFIG` (or the container
+  default) only.
 - **CLI help trimmed to purpose**: group descriptions no longer list
   their subcommands, command docstrings no longer advertise output
   options, `doctor` states what it verifies instead of listing its

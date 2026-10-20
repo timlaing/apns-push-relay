@@ -463,6 +463,7 @@ def env(tmp_path: Path) -> Env:
         store=store,
         sender=sender,
         callback_client=callback_client,
+        config_path=config_path,
     )
     with TestClient(app) as client:
         yield Env(

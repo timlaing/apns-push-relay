@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .config import APP_ID_RE, BUNDLE_ID_RE, KEY_ID_RE, TEAM_ID_RE
+
 Kind = Literal["alert", "background", "liveActivity"]
 
 
@@ -141,3 +143,22 @@ class AdminDenylistEntry(Strict):
         pattern=r"^(sha256:[0-9a-f]{64}|[A-Za-z0-9_-]{16,64})$",
     )
     expires: int | None = None
+
+
+class AdminAppEntry(Strict):
+    """An app as written into ``config.yaml`` (snake_case = the yaml keys).
+
+    ``key_id`` must name an ``AuthKey_<key_id>.p8`` present beside the
+    config (the server checks, like the loader would at boot). Quota,
+    grant TTL and registration defaults are filled server-side.
+    """
+
+    id: str = Field(pattern=APP_ID_RE.pattern, max_length=63)
+    bundle_id: str = Field(pattern=BUNDLE_ID_RE.pattern, min_length=3, max_length=255)
+    team_id: str = Field(pattern=TEAM_ID_RE.pattern)
+    key_id: str = Field(pattern=KEY_ID_RE.pattern)
+    display_name: str = Field(default="", max_length=128)
+    environments: list[str] = Field(default_factory=lambda: ["sandbox", "production"], min_length=1)
+    kinds: list[str] = Field(default_factory=list, min_length=1)
+    live_activity: bool = True
+    attest_environment: Literal["development", "production"] = "production"

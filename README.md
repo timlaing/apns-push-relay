@@ -75,7 +75,7 @@ relay logs --errors --since 1h
 relay tenant list|verify|revoke|reissue
 relay denylist add <jti|sha256:…> --expires 24h
 relay metrics                 # metric table (--json / --prom too)
-relay app list|add|remove     # edit apps in config.yaml (offline, keeps comments)
+relay app list|add|remove     # manage apps via the admin API (keeps comments)
 ```
 
 ## Development
