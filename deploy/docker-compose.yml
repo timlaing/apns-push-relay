@@ -90,10 +90,12 @@ services:
       # RELAY_CONFIG / RELAY_DATA_DIR default to /etc/apns-relay/config.yaml
       # and /var/lib/apns-relay in the image.
     ports:
-      # Host loopback only: lets you hit the API/Swagger locally (and run the
-      # CLI against it) before nginx exists. LAN exposure stays nginx's job
-      # (/admin is never proxied; token-protected either way).
+      # Host loopback only: the admin API on 8000 (the CLI's default
+      # target) and the public API + Swagger on 8001 (pre-nginx). LAN /
+      # Internet exposure stays nginx's job — it is 8001's only client,
+      # and /admin is never proxied.
       - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8001:8001"
     volumes:
       - ./config.yaml:/etc/apns-relay/config.yaml:ro
       - ./keys:/etc/apns-relay/keys:ro

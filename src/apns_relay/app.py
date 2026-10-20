@@ -3,6 +3,8 @@
 ``create_app()`` is a uvicorn ``--factory`` target reading ``RELAY_CONFIG``,
 ``RELAY_ADMIN_TOKEN`` and ``RELAY_MASTER_SECRET`` from the environment.
 Tests construct it with an explicit config + injected store/sender.
+``create_listeners()`` (same env) returns the split (admin, public) pair
+that ``serve.py`` binds on ports 8000/8001.
 """
 
 from __future__ import annotations
@@ -139,7 +141,11 @@ def create_app(
     store: Store | None = None,
     sender: APNsSender | None = None,
     callback_client: httpx.AsyncClient | None = None,
+    public: bool = True,
+    admin: bool = True,
 ) -> FastAPI:
+    """Assemble the app. Both sides default on (single-listener runs); the
+    compose deployment splits them — see ``create_listeners``."""
     if config is None:
         config, master_secret = _from_env()
     elif master_secret is None:
@@ -151,7 +157,22 @@ def create_app(
         sender=sender,
         callback_client=callback_client,
     )
-    return _assemble(state)
+    return _assemble(state, public=public, admin=admin)
+
+
+def create_listeners() -> tuple[FastAPI, FastAPI]:
+    """(admin_app, public_app) sharing one AppState — the compose run path.
+
+    ``serve.py`` binds them on separate ports in a single process (admin on
+    8000, public on 8001): the metrics/event state stays global and SQLite
+    keeps its single writer.
+    """
+    config, master_secret = _from_env()
+    state = build_state(config, master_secret=master_secret)
+    return (
+        _assemble(state, public=False, admin=True),
+        _assemble(state, public=True, admin=False),
+    )
 
 
 def _validation_detail(exc: RequestValidationError) -> list[dict]:
@@ -163,7 +184,14 @@ def _validation_detail(exc: RequestValidationError) -> list[dict]:
     ]
 
 
-def _assemble(state: AppState) -> FastAPI:
+def _assemble(state: AppState, *, public: bool, admin: bool) -> FastAPI:
+    """Build a FastAPI app from shared state for one side of the split.
+
+    ``public=True`` serves /v1, /health, /metrics (+docs when enabled);
+    ``admin=True`` serves /admin, /health and /metrics (the CLI's targets).
+    Both flags on = the whole surface in one listener (tests, bare runs).
+    """
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         state.maybe_prune(time.time())
@@ -177,7 +205,9 @@ def _assemble(state: AppState) -> FastAPI:
                     await state.sweep_task
             await state.sender.aclose()
 
-    swagger = state.config.server.swagger_ui
+    # Interactive API docs (Swagger UI / ReDoc / schema) are an operator
+    # opt-in (server.swagger_ui) and live on the public listener only.
+    swagger = state.config.server.swagger_ui and public
     app = FastAPI(
         title="apns-push-relay",
         # Schema version tracks the package version (releases are v* tags).
@@ -260,6 +290,8 @@ def _assemble(state: AppState) -> FastAPI:
             media_type="text/plain; version=0.0.4",
         )
 
-    app.include_router(v1_router(state))
-    app.include_router(admin_router(state))
+    if public:
+        app.include_router(v1_router(state))
+    if admin:
+        app.include_router(admin_router(state))
     return app

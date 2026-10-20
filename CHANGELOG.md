@@ -36,9 +36,11 @@ and this project adheres to [Semantic Versioning].
 - `bundle_id` clarified in the example config and docs: it is the bundle
   identifier only — the APNs topic _is_ the bundle id (no App ID
   prefix).
-- The relay's own port is published on host loopback
-  (`127.0.0.1:8000`) so the CLI and Swagger work before nginx exists;
-  LAN/Internet exposure stays nginx's job.
+- **The admin API moved to its own port**: one relay process now serves
+  two listeners sharing one state — the public API (+docs) on port 8001
+  (nginx's upstream) and the admin API on port 8000. Both are published
+  on host loopback only (the CLI's default target is the admin port);
+  the public listener has no `/admin` routes at all.
 
 ### Fixed
 

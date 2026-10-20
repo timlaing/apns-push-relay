@@ -5,9 +5,11 @@
 # variables such as $host, $request_uri and $binary_remote_addr survive
 # untouched.
 #
-# /admin is deliberately never proxied — the admin API is internal-network
-# only (PLAN §3). /docs, /redoc and /openapi.json ARE proxied, but the relay
-# serves them only when config sets server.swagger_ui: true (404 otherwise).
+# /admin is deliberately never proxied — the admin API has its own
+# listener (port 8000, host loopback only; PLAN §3), and the public
+# listener on 8001 serves no /admin routes at all. /docs, /redoc and
+# /openapi.json ARE proxied, but the relay serves them only when config
+# sets server.swagger_ui: true (404 otherwise).
 
 limit_req_zone $binary_remote_addr zone=relaylimit:10m rate=30r/s;
 
@@ -44,7 +46,7 @@ server {
             return 301 https://${API_DOMAIN}$request_uri;
         }
         limit_req zone=relaylimit burst=60 nodelay;
-        proxy_pass http://relay:8000;
+        proxy_pass http://relay:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
@@ -77,7 +79,7 @@ server {
     # opt in.
     location /docs {
         limit_req zone=relaylimit burst=60 nodelay;
-        proxy_pass http://relay:8000;
+        proxy_pass http://relay:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -85,7 +87,7 @@ server {
 
     location /redoc {
         limit_req zone=relaylimit burst=60 nodelay;
-        proxy_pass http://relay:8000;
+        proxy_pass http://relay:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -93,7 +95,7 @@ server {
 
     location /openapi.json {
         limit_req zone=relaylimit burst=60 nodelay;
-        proxy_pass http://relay:8000;
+        proxy_pass http://relay:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -103,21 +105,21 @@ server {
     # never exposed beyond this proxy.
     location /v1/ {
         limit_req zone=relaylimit burst=60 nodelay;
-        proxy_pass http://relay:8000;
+        proxy_pass http://relay:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location = /health {
-        proxy_pass http://relay:8000;
+        proxy_pass http://relay:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location = /metrics {
-        proxy_pass http://relay:8000;
+        proxy_pass http://relay:8001;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;

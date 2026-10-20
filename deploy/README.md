@@ -1,7 +1,8 @@
 # Deployment — Docker Compose
 
 nginx (TLS, 16k body cap, per-IP rate limit) + certbot (Let's Encrypt) +
-relay (FastAPI/uvicorn, internal network only). Full walkthrough:
+relay (FastAPI/uvicorn — public API on 8001, admin API on its own port
+8000; both bound to host loopback, nginx is the edge). Full walkthrough:
 `docs/self-hosting.md`.
 
 ## Prerequisites
@@ -74,8 +75,9 @@ upstream proxy.
   `docker compose exec relay relay status` (also `relay doctor`,
   `relay monitor`, `relay app list`, `relay tenant list`, …).
 - **`/admin` is never proxied** through nginx — both ports 404 it at the
-  edge (internal network only); reach the admin API via the CLI above
-  (`docker compose exec`).
+  edge, and the public listener (8001) has no admin routes at all. Reach
+  the admin API via the CLI above (`docker compose exec`) or
+  `http://127.0.0.1:8000` on the host.
 - **Onboard an app**: drop its `.p8` in `keys/`, then either add the
   `apps:` entry by hand or run `relay app add` where the config is
   writable (the container mounts it read-only — from a checkout:

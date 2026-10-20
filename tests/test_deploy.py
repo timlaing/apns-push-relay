@@ -76,7 +76,7 @@ def test_port_80_redirect_opt_out_for_tls_terminating_proxies() -> None:
     block = _location_block(conf, "/ {")  # first `location /` is port 80's
     assert "if ($force_https)" in block
     assert "return 301 https://${API_DOMAIN}$request_uri;" in block
-    assert "proxy_pass http://relay:8000;" in block
+    assert "proxy_pass http://relay:8001;" in block
     assert "proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;" in block
 
 
@@ -86,7 +86,7 @@ def test_swagger_routes_proxy_to_the_relay() -> None:
     conf = _nginx()
     for header in ("/docs {", "/redoc {", "/openapi.json {"):
         block = _location_block(conf, header)
-        assert "proxy_pass http://relay:8000;" in block, header
+        assert "proxy_pass http://relay:8001;" in block, header
         assert "return 404" not in block, header
 
 
@@ -105,7 +105,7 @@ def test_request_body_capped_at_16k() -> None:
 
 def test_v1_proxies_to_relay_internal_port() -> None:
     v1 = _location_block(_nginx(), "/v1/ {")
-    assert "proxy_pass http://relay:8000;" in v1
+    assert "proxy_pass http://relay:8001;" in v1
 
 
 def test_acme_challenge_location_present() -> None:
@@ -127,11 +127,23 @@ def test_relay_secrets_injected_via_environment() -> None:
 
 
 def test_nginx_publishes_80_and_443_relay_is_loopback_only() -> None:
-    """nginx is the public edge; the relay binds host-loopback only — enough
-    for the CLI/Swagger before nginx exists, never LAN/Internet-facing."""
+    """nginx is the public edge; both relay listeners bind host-loopback —
+    the admin API on 8000 (CLI target), the public API + Swagger on 8001,
+    never LAN/Internet-facing."""
     compose = _compose()
     assert {"80:80", "443:443"} <= set(compose["services"]["nginx"]["ports"])
-    assert set(compose["services"]["relay"]["ports"]) == {"127.0.0.1:8000:8000"}
+    assert set(compose["services"]["relay"]["ports"]) == {
+        "127.0.0.1:8000:8000",
+        "127.0.0.1:8001:8001",
+    }
+
+
+def test_nginx_proxies_only_to_the_public_listener() -> None:
+    """Every upstream is the public listener (8001); the admin listener
+    (8000) has no route through the edge at all."""
+    conf = _nginx()
+    targets = re.findall(r"proxy_pass (http://relay:\d+);", conf)
+    assert targets and set(targets) == {"http://relay:8001"}
 
 
 def test_nginx_force_https_only_disablable_via_operator_env() -> None:
@@ -169,9 +181,10 @@ def test_dockerfile_entrypoint_and_command() -> None:
     assert "relay-entrypoint" in entrypoint  # runs `relay doctor` pre-flight
     assert "COPY deploy/relay-entrypoint.sh /usr/local/bin/relay-entrypoint" in dockerfile
     cmd = next(line for line in dockerfile.splitlines() if line.startswith("CMD"))
-    assert "uvicorn" in cmd
-    assert "apns_relay.app:create_app" in cmd
-    assert "--factory" in cmd
+    # one process, two listeners: admin 8000 + public 8001 (serve.py)
+    assert cmd == 'CMD ["python", "-m", "apns_relay.serve"]'
+    expose = next(line for line in dockerfile.splitlines() if line.startswith("EXPOSE"))
+    assert expose == "EXPOSE 8000 8001"
 
 
 def test_entrypoint_runs_doctor_before_exec() -> None:

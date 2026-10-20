@@ -36,14 +36,15 @@ RUN useradd --system --uid 10001 --user-group --no-create-home \
 USER relay
 WORKDIR /var/lib/apns-relay
 
-EXPOSE 8000
+EXPOSE 8000 8001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
 
-# Single worker: SQLite has a single writer — more workers would contend on
-# the write lock for no throughput gain. The entrypoint fetches the App Attest
-# root when missing, then runs `relay doctor` first (config + keys + JWT
-# pre-sign pre-flight, PLAN §5).
+# One process serves both listeners (serve.py): the admin API on 8000 and
+# the public API on 8001, sharing one state — SQLite has a single writer, so
+# extra workers would only contend on the write lock. The entrypoint fetches
+# the App Attest root when missing, then runs `relay doctor` first (config +
+# keys + JWT pre-sign pre-flight, PLAN §5).
 ENTRYPOINT ["/usr/local/bin/relay-entrypoint"]
-CMD ["uvicorn", "apns_relay.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["python", "-m", "apns_relay.serve"]

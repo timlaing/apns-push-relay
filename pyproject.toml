@@ -73,3 +73,4 @@ extend-immutable-calls = ["fastapi.Depends", "typer.Option", "typer.Argument"]
 "tests/*" = ["S105", "S106", "S107"]
 "scripts/*" = ["E402"]  # sys.path bootstrap before local imports
 "clients/*" = ["S310"]  # reference client opens https URLs from config
+"src/apns_relay/serve.py" = ["S104"]  # in-container listeners; compose publishes loopback-only
