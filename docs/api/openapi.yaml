@@ -2,7 +2,7 @@
 openapi: 3.1.0
 info:
   title: apns-push-relay
-  version: 0.1.0
+  version: 0.2.0
 paths:
   /v1/register:
     post:

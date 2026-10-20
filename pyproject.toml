@@ -1,6 +1,6 @@
 [project]
 name = "apns-push-relay"
-version = "0.1.0"
+version = "0.2.0"
 description = "Generic, self-hostable APNs push relay: signed requests in, APNs out"
 readme = "README.md"
 license = { text = "MIT" }
