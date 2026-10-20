@@ -153,6 +153,15 @@ def test_nginx_force_https_only_disablable_via_operator_env() -> None:
     assert env["FORCE_HTTPS"] == "${FORCE_HTTPS:-1}"
 
 
+def test_relay_mounts_instance_dir_rw_keys_stay_ro() -> None:
+    """In-container config management: app add/remove edit config.yaml and
+    write config.yaml.bak on the host; the keys dir stays read-only."""
+    volumes = _compose()["services"]["relay"]["volumes"]
+    assert "./:/etc/apns-relay" in volumes
+    assert "./keys:/etc/apns-relay/keys:ro" in volumes
+    assert not any("config.yaml" in mount for mount in volumes)
+
+
 def test_relay_service_prefers_the_published_image() -> None:
     """The published GHCR image is the primary run path; build: stays as the
     from-source fallback (compose builds when no image is available)."""

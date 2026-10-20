@@ -168,11 +168,12 @@ docker compose exec relay relay metrics             # Prometheus text
   all, and **nginx returns 404 for `/admin`**.
 - **Adding or removing apps**: `relay app add` (interactively picks from
   `keys/AuthKey_*.p8`) and `relay app remove` edit `config.yaml` offline,
-  preserving comments and writing a `.bak`. The compose config mount is
-  read-only, so run them from a checkout —
-  `RELAY_CONFIG=deploy/config.yaml uv run relay app add` — then
-  `docker compose -f deploy/docker-compose.yml restart relay` (doctor
-  re-runs at boot).
+  preserving comments and writing a `.bak`. The deploy directory is
+  mounted read-write (keys stay read-only), so run them inside the
+  container — `docker compose exec -u root relay relay app add` — then
+  `docker compose restart relay` (doctor re-runs at boot). From a
+  checkout, `uv run relay app add --config deploy/config.yaml` works
+  too (`--config` beats `$RELAY_CONFIG`).
 - **Interactive API docs**: set `swagger_ui: true` under `server:` in
   `config.yaml` to serve Swagger UI at `/docs`, ReDoc at `/redoc` and the
   schema at `/openapi.json` on the API domain (off by default — the

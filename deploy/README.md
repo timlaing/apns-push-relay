@@ -78,8 +78,9 @@ upstream proxy.
   edge, and the public listener (8001) has no admin routes at all. Reach
   the admin API via the CLI above (`docker compose exec`) or
   `http://127.0.0.1:8000` on the host.
-- **Onboard an app**: drop its `.p8` in `keys/`, then either add the
-  `apps:` entry by hand or run `relay app add` where the config is
-  writable (the container mounts it read-only — from a checkout:
-  `RELAY_CONFIG=$PWD/config.yaml uv run relay app add` picks a key
-  interactively), and `docker compose restart relay`.
+- **Onboard an app**: drop its `.p8` in `keys/`, then run
+  `docker compose exec -u root relay relay app add` (interactive key
+  picker; edits `config.yaml` and writes `config.yaml.bak` on the host —
+  the deploy dir is mounted read-write, keys stay read-only) and
+  `docker compose restart relay`. Host-side alternative from a
+  checkout: `uv run relay app add --config config.yaml`.

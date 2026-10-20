@@ -102,8 +102,17 @@ def _guard(fn: Any) -> Any:
     return wrapper
 
 
-def _config_path() -> Path:
-    return Path(os.environ.get("RELAY_CONFIG", DEFAULT_CONFIG))
+def _config_path(override: Path | None = None) -> Path:
+    """--config flag, else $RELAY_CONFIG, else the container default."""
+    return override or Path(os.environ.get("RELAY_CONFIG", DEFAULT_CONFIG))
+
+
+_CONFIG_OPT = typer.Option(
+    None,
+    "--config",
+    "-c",
+    help="config.yaml path (default: $RELAY_CONFIG, else /etc/apns-relay/config.yaml)",
+)
 
 
 def _duration_to_seconds(value: str) -> int:
@@ -291,10 +300,11 @@ def doctor(
     fetch_roots: bool = typer.Option(
         False, "--fetch-roots", help="re-download the App Attest root(s) first"
     ),
+    config: Path | None = _CONFIG_OPT,
 ) -> None:
     """Offline pre-flight: config + keys + JWT pre-sign + secrets."""
     del ctx
-    config_path = os.environ.get("RELAY_CONFIG", DEFAULT_CONFIG)
+    config_path = str(_config_path(config))
     try:
         config = load_config(config_path, admin_token=os.environ.get("RELAY_ADMIN_TOKEN"))
     except ConfigError as exc:
@@ -328,10 +338,11 @@ def fetch_roots(
     if_missing: bool = typer.Option(
         False, "--if-missing", help="skip paths that already have a file (container startup)"
     ),
+    config: Path | None = _CONFIG_OPT,
 ) -> None:
     """Download/update the App Attest root(s) (pinned SHA-256)."""
     del ctx
-    config_path = os.environ.get("RELAY_CONFIG", DEFAULT_CONFIG)
+    config_path = str(_config_path(config))
     try:
         config = load_config(config_path, admin_token=os.environ.get("RELAY_ADMIN_TOKEN"))
     except ConfigError as exc:
@@ -623,10 +634,10 @@ def denylist_add(
 
 @config_app.command("list")
 @_guard
-def app_list(ctx: typer.Context) -> None:
+def app_list(ctx: typer.Context, config: Path | None = _CONFIG_OPT) -> None:
     """List apps from config.yaml (offline)."""
     del ctx
-    entries = configedit.list_apps(_config_path())
+    entries = configedit.list_apps(_config_path(config))
     table = Table(box=None, pad_edge=False)
     for column in ("id", "bundle_id", "team_id", "key_id", "environments"):
         table.add_column(column)
@@ -658,10 +669,11 @@ def app_add(
     kind: list[str] = typer.Option([], "--kind", help="alert|background|liveActivity (repeatable)"),
     live_activity: bool = typer.Option(True, "--live-activity/--no-live-activity"),
     yes: bool = typer.Option(False, "--yes", "-y", help="accept defaults, no prompts"),
+    config: Path | None = _CONFIG_OPT,
 ) -> None:
     """Add an app to config.yaml (picks from keys/ when --key-id is omitted)."""
     del ctx
-    config_path = _config_path()
+    config_path = _config_path(config)
     if yes:
         missing = [
             flag
@@ -733,10 +745,11 @@ def app_remove(
     ctx: typer.Context,
     app_id: str = typer.Argument(..., help="app id to remove"),
     yes: bool = typer.Option(False, "--yes", "-y", help="no confirmation prompt"),
+    config: Path | None = _CONFIG_OPT,
 ) -> None:
     """Remove an app from config.yaml."""
     del ctx
-    config_path = _config_path()
+    config_path = _config_path(config)
     if not yes and not typer.confirm(f"Remove {app_id!r} from {config_path.name}?"):
         raise typer.Exit(0)
     configedit.remove_app(config_path, app_id)

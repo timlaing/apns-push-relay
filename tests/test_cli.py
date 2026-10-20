@@ -1058,6 +1058,59 @@ def test_app_list_renders_table(tmp_path, monkeypatch, capsys) -> None:
     assert "production" in out  # scalar environments render as-is
 
 
+def test_config_flag_selects_config_without_env(tmp_path, monkeypatch, capsys) -> None:
+    """--config works with $RELAY_CONFIG unset — a host checkout pointing at
+    deploy/config.yaml, or any ad-hoc path."""
+    config = _mini_config(
+        tmp_path,
+        apps_yaml="""  - id: alpha
+    bundle_id: com.example.alpha
+    team_id: TEAMID0001
+    key_id: ABCDEF0123
+""",
+    )
+    monkeypatch.setenv("COLUMNS", "160")
+    assert main(["app", "list", "--config", str(config)]) == 0
+    assert "alpha" in capsys.readouterr().out
+
+
+def test_config_flag_app_add_and_remove(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(
+        tmp_path,
+        apps_yaml="""  - id: alpha
+    bundle_id: com.example.alpha
+    team_id: TEAMID0001
+    key_id: ABCDEF0123
+""",
+    )
+    _drop_key(config, "ABCDEF0123")
+    assert (
+        main(
+            [
+                "app",
+                "add",
+                "--config",
+                str(config),
+                "--yes",
+                "--key-id",
+                "ABCDEF0123",
+                "--id",
+                "demo",
+                "--bundle-id",
+                "com.example.demo",
+                "--team-id",
+                TEAM,
+            ]
+        )
+        == 0
+    )
+    assert "bundle_id: com.example.demo" in config.read_text()
+    assert (tmp_path / "config.yaml.bak").is_file()
+    assert main(["app", "remove", "demo", "--yes", "-c", str(config)]) == 0
+    assert "com.example.demo" not in config.read_text()
+    assert "id: alpha" in config.read_text()
+
+
 def test_app_add_noninteractive(tmp_path, monkeypatch, capsys) -> None:
     config = _mini_config(tmp_path)
     _drop_key(config, "ABCDEF0123")

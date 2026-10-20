@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning].
   a TLS-terminating reverse proxy — instead of redirecting them. The
   default keeps port 80 redirecting unconditionally, and `/admin` 404s
   at the edge on both ports.
+- **In-container config management**: compose mounts the deploy
+  directory read-write (keys stay read-only), so `relay app add` /
+  `app remove` run inside the container
+  (`docker compose exec -u root relay …`) edit the live config with
+  host-side backups. `--config`/`-c` selects the config path for the
+  offline commands (`app list/add/remove`, `doctor`, `fetch-roots`) and
+  beats `$RELAY_CONFIG`.
 
 ### Changed
 

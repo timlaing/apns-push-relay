@@ -97,7 +97,11 @@ services:
       - "127.0.0.1:8000:8000"
       - "127.0.0.1:8001:8001"
     volumes:
-      - ./config.yaml:/etc/apns-relay/config.yaml:ro
+      # The whole deploy dir, read-write: `relay app add/remove` run inside
+      # the container edit config.yaml and write config.yaml.bak on the host
+      # (run writes as root: docker compose exec -u root). Keys stay
+      # read-only via the shadowing mount below.
+      - ./:/etc/apns-relay
       - ./keys:/etc/apns-relay/keys:ro
       - relay-data:/var/lib/apns-relay
     networks:
