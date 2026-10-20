@@ -27,11 +27,23 @@ and this project adheres to [Semantic Versioning].
   `app remove` run inside the container
   (`docker compose exec -u root relay …`) edit the live config with
   host-side backups. `--config`/`-c` selects the config path for the
-  offline commands (`app list/add/remove`, `doctor`, `fetch-roots`) and
-  beats `$RELAY_CONFIG`.
+  config-editing commands (`app add`, `app remove`).
+- **`relay version`** and a `version` row in `relay status` —
+  `/admin/status` reports the package version (shown by `monitor` too).
+- **Formatted metrics**: `relay metrics` renders the rich table (the
+  `metrics` legend section, same as `status`); `--json` on `metrics`
+  _and_ `status` prints machine-readable JSON (sorted, indented), and
+  `metrics --prom` keeps the raw Prometheus text.
 
 ### Changed
 
+- **`--config` only where configs are edited**: `app add` / `app remove`
+  keep `--config`/`-c`; readers (`app list`, `doctor`, `fetch-roots`)
+  resolve `$RELAY_CONFIG` (or the container default) only.
+- **CLI help text normalized**: group descriptions are full sentences
+  with a period, option helps are lowercase without one and use
+  `(default: …)` parentheticals; stale lines (metrics, status) now
+  match the new behaviour.
 - **The image tracks `latest`**: compose's relay service now uses
   `ghcr.io/timlaing/apns-push-relay:latest` — the `RELAY_TAG`
   interpolation is gone (version-pinned tags are invisible to image

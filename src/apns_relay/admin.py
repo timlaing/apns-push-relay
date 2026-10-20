@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hmac
 import time
+from importlib.metadata import version
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -39,6 +40,7 @@ def admin_router(state: AppState) -> APIRouter:
     async def status() -> dict:
         now = time.time()
         return {
+            "version": version("apns-push-relay"),
             "status": "ok",
             "uptimeSeconds": int(now - state.started_at),
             "tenants": state.store.count_tenants(),

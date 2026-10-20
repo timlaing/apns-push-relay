@@ -152,13 +152,14 @@ Forward the original `Host` header from the upstream proxy.
 ## 5. Day-two operations
 
 ```sh
-docker compose exec relay relay status              # health + quota + metrics
+docker compose exec relay relay status              # version + health + quota + metrics
+docker compose exec relay relay version             # package version
 docker compose exec relay relay monitor --interval 5   # live dashboard (status, quotas, recent requests)
 docker compose exec relay relay logs --errors --since 1h
 docker compose exec relay relay tenant list
 docker compose exec relay relay tenant revoke hooks.example.com   # kill switch
 docker compose exec relay relay denylist add <jti|sha256:…> --expires 24h
-docker compose exec relay relay metrics             # Prometheus text
+docker compose exec relay relay metrics             # metric table (--json / --prom too)
 ```
 
 - The relay process serves two listeners: the public API on port 8001

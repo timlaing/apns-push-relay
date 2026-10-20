@@ -68,12 +68,13 @@ The stack is nginx + certbot (automatic TLS renewal) + the relay, with
 
 ```sh
 relay doctor                  # offline config/keys/secrets validation
-relay status                  # tenants, quota config, metric snapshot
+relay version                 # package version
+relay status                  # version, health, quota, metric snapshot
 relay monitor --interval 5    # live dashboard (status, quotas, recent requests)
 relay logs --errors --since 1h
 relay tenant list|verify|revoke|reissue
 relay denylist add <jti|sha256:…> --expires 24h
-relay metrics                 # Prometheus text
+relay metrics                 # metric table (--json / --prom too)
 relay app list|add|remove     # edit apps in config.yaml (offline, keeps comments)
 ```
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 import sys
+from importlib.metadata import version as package_version
 from pathlib import Path
 
 import httpx
@@ -30,6 +31,7 @@ NOW_ISO = "2027-01-15 08:00:00Z"  # _iso(FROZEN_TS)
 NOW_ISO_10 = "2027-01-15 08:00:10Z"  # _iso(FROZEN_TS + 10)
 
 STATUS_JSON = {
+    "version": "9.9.9-test",
     "status": "ok",
     "uptimeSeconds": 42,
     "tenants": 3,
@@ -402,6 +404,11 @@ def test_doctor_fetch_roots_download_failure_fails_check(tmp_path, monkeypatch, 
 # -- status / metrics / logs ---------------------------------------------------
 
 
+def test_version_command(capsys) -> None:
+    assert main(["version"]) == 0
+    assert capsys.readouterr().out == f"relay {package_version('apns-push-relay')}\n"
+
+
 def test_status_renders_snapshot(monkeypatch, capsys) -> None:
     _auth(monkeypatch)
     monkeypatch.setenv("COLUMNS", "220")  # rich tables: keep rows on one line
@@ -415,6 +422,7 @@ def test_status_renders_snapshot(monkeypatch, capsys) -> None:
     out = capsys.readouterr().out
     assert "status" in out and "ok" in out
     assert "uptime" in out and "42s" in out
+    assert "version" in out and "9.9.9-test" in out
     assert "tenants" in out and "denylisted" in out
     assert "test-app" in out and "second-app" in out
     assert "enabled" in out and "disabled" in out
@@ -427,6 +435,16 @@ def test_status_renders_snapshot(monkeypatch, capsys) -> None:
     assert "bad_admin_token=4" in out
     assert "pushes_total" in out
     assert "total=2, accepted=1" in out
+
+
+def test_status_json(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=STATUS_JSON)
+
+    assert main(["status", "--json"], transport=httpx.MockTransport(handler)) == 0
+    assert json.loads(capsys.readouterr().out) == STATUS_JSON
 
 
 def test_status_json_error_maps_to_exit_1(monkeypatch, capsys) -> None:
@@ -461,7 +479,7 @@ def test_metrics_text_passthrough(monkeypatch, capsys) -> None:
         assert request.url.path == "/metrics"
         return httpx.Response(200, text=body, headers={"content-type": "text/plain"})
 
-    assert main(["metrics"], transport=httpx.MockTransport(handler)) == 0
+    assert main(["metrics", "--prom"], transport=httpx.MockTransport(handler)) == 0
     assert capsys.readouterr().out == body  # byte-for-byte passthrough
 
 
@@ -471,8 +489,44 @@ def test_metrics_error_exits_1(monkeypatch, capsys) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"error": "unavailable"})
 
-    assert main(["metrics"], transport=httpx.MockTransport(handler)) == 1
+    assert main(["metrics", "--prom"], transport=httpx.MockTransport(handler)) == 1
     assert "error: GET /metrics → 503" in capsys.readouterr().err
+
+
+def test_metrics_renders_table(monkeypatch, capsys) -> None:
+    """Default mode reads the status snapshot and renders the legend table."""
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/admin/status"
+        return httpx.Response(200, json=STATUS_JSON)
+
+    assert main(["metrics"], transport=httpx.MockTransport(handler)) == 0
+    out = capsys.readouterr().out
+    assert "╭─ metrics ─" in out
+    assert "failures_total" in out and "bad_admin_token=4" in out
+    assert "pushes_total" in out and "total=2, accepted=1" in out
+
+
+def test_metrics_json(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/admin/status"
+        return httpx.Response(200, json=STATUS_JSON)
+
+    assert main(["metrics", "--json"], transport=httpx.MockTransport(handler)) == 0
+    assert json.loads(capsys.readouterr().out) == STATUS_JSON["metrics"]
+
+
+def test_metrics_empty(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={**STATUS_JSON, "metrics": {}})
+
+    assert main(["metrics"], transport=httpx.MockTransport(handler)) == 0
+    assert "(no metrics yet)" in capsys.readouterr().out
 
 
 def test_logs_empty_events(monkeypatch, capsys) -> None:
@@ -1060,20 +1114,17 @@ def test_app_list_renders_table(tmp_path, monkeypatch, capsys) -> None:
     assert "production" in out  # scalar environments render as-is
 
 
-def test_config_flag_selects_config_without_env(tmp_path, monkeypatch, capsys) -> None:
-    """--config works with $RELAY_CONFIG unset — a host checkout pointing at
-    deploy/config.yaml, or any ad-hoc path."""
-    config = _mini_config(
-        tmp_path,
-        apps_yaml="""  - id: alpha
-    bundle_id: com.example.alpha
-    team_id: TEAMID0001
-    key_id: ABCDEF0123
-""",
-    )
-    monkeypatch.setenv("COLUMNS", "160")
-    assert main(["app", "list", "--config", str(config)]) == 0
-    assert "alpha" in capsys.readouterr().out
+def test_config_flag_only_on_editing_commands(capsys) -> None:
+    """--config belongs to config-EDITING commands (app add/remove);
+    the readers (app list, doctor, fetch-roots) resolve $RELAY_CONFIG /
+    the container default only, so --config there is an unknown option."""
+    for argv in (
+        ["app", "list", "--config", "x.yaml"],
+        ["doctor", "--config", "x.yaml"],
+        ["fetch-roots", "--config", "x.yaml"],
+    ):
+        assert main(argv) == 2  # click UsageError → our exit 2
+        assert "--config" in capsys.readouterr().err  # unknown option
 
 
 def test_config_flag_app_add_and_remove(tmp_path, monkeypatch, capsys) -> None:

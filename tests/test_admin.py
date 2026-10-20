@@ -7,6 +7,7 @@ or destination material may appear in any admin response (PLAN §3.4).
 
 from __future__ import annotations
 
+from importlib.metadata import version as package_version
 from typing import Any
 
 import pytest
@@ -80,6 +81,7 @@ def test_status_reports_shape_and_metrics(env) -> None:
     response = _get(env, "/admin/status")
     assert response.status_code == 200
     body = response.json()
+    assert body["version"] == package_version("apns-push-relay")
     assert body["status"] == "ok"
     assert body["uptimeSeconds"] >= 0
     assert body["tenants"] == 1

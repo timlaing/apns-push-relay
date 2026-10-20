@@ -13,11 +13,13 @@ from __future__ import annotations
 
 import functools
 import io
+import json
 import os
 import sys
 import time
 from contextlib import redirect_stdout
 from datetime import UTC, datetime
+from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any
 
@@ -65,9 +67,13 @@ app = typer.Typer(
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
-tenant_app = typer.Typer(help="tenant lifecycle", no_args_is_help=True)
-denylist_app = typer.Typer(help="grant jti / destination-token-hash denylist", no_args_is_help=True)
-config_app = typer.Typer(help="add/remove apps in config.yaml (offline)", no_args_is_help=True)
+tenant_app = typer.Typer(
+    help="Manage registered tenants (list, verify, revoke, reissue).", no_args_is_help=True
+)
+denylist_app = typer.Typer(
+    help="Manage the grant and destination-token denylist (list, add).", no_args_is_help=True
+)
+config_app = typer.Typer(help="Add and remove apps in config.yaml (offline).", no_args_is_help=True)
 app.add_typer(tenant_app, name="tenant")
 app.add_typer(denylist_app, name="denylist")
 app.add_typer(config_app, name="app")
@@ -319,11 +325,10 @@ def doctor(
     fetch_roots: bool = typer.Option(
         False, "--fetch-roots", help="re-download the App Attest root(s) first"
     ),
-    config: Path | None = _CONFIG_OPT,
 ) -> None:
     """Offline pre-flight: config + keys + JWT pre-sign + secrets."""
     del ctx
-    config_path = str(_config_path(config))
+    config_path = str(_config_path())
     try:
         config = load_config(config_path, admin_token=os.environ.get("RELAY_ADMIN_TOKEN"))
     except ConfigError as exc:
@@ -357,11 +362,10 @@ def fetch_roots(
     if_missing: bool = typer.Option(
         False, "--if-missing", help="skip paths that already have a file (container startup)"
     ),
-    config: Path | None = _CONFIG_OPT,
 ) -> None:
     """Download/update the App Attest root(s) (pinned SHA-256)."""
     del ctx
-    config_path = str(_config_path(config))
+    config_path = str(_config_path())
     try:
         config = load_config(config_path, admin_token=os.environ.get("RELAY_ADMIN_TOKEN"))
     except ConfigError as exc:
@@ -382,13 +386,39 @@ def fetch_roots(
         raise typer.Exit(1)
 
 
+# -- version ------------------------------------------------------------------
+
+
+@app.command("version")
+def version_cmd() -> None:
+    """Print the relay version."""
+    out.print(f"relay {package_version('apns-push-relay')}")
+
+
 # -- status / metrics / logs / monitor ----------------------------------------
+
+
+def _metrics_section(metrics: dict[str, Any]) -> Panel:
+    """The metrics block as a legend section (status and ``relay metrics``)."""
+    if not metrics:
+        return _section("metrics", "(no metrics yet)")
+    table = Table(box=box.SIMPLE)
+    table.add_column("metric")
+    table.add_column("labels")
+    table.add_column("count", justify="right")
+    for name, labels in sorted(metrics.items()):
+        rendered = ", ".join(
+            f"{label or 'total'}={count}" for label, count in sorted(labels.items())
+        )
+        table.add_row(name, rendered, str(sum(labels.values())))
+    return _section("metrics", table)
 
 
 def _status_view(data: dict[str, Any]) -> Group:
     head = Table(box=box.SIMPLE)
     head.add_column("field", style="bold cyan")
     head.add_column("value")
+    head.add_row("version", str(data["version"]))
     head.add_row("status", str(data["status"]))
     head.add_row("uptime", f"{data['uptimeSeconds']}s")
     head.add_row("tenants", str(data["tenants"]))
@@ -418,42 +448,51 @@ def _status_view(data: dict[str, Any]) -> Group:
             f"{ttl['min']}..{ttl['max']}s default {ttl['default']}s",
         )
 
-    metrics = Table(box=box.SIMPLE)
-    metrics.add_column("metric")
-    metrics.add_column("labels")
-    metrics.add_column("count", justify="right")
-    for name, labels in sorted(data["metrics"].items()):
-        rendered = ", ".join(
-            f"{label or 'total'}={count}" for label, count in sorted(labels.items())
-        )
-        metrics.add_row(name, rendered, str(sum(labels.values())))
     return Group(
         _section("status", head),
         _section("apps", apps),
-        _section("metrics", metrics),
+        _metrics_section(data["metrics"]),
     )
 
 
 @app.command()
 @_guard
-def status(ctx: typer.Context) -> None:
-    """Health, tenants, quota config, metric snapshot."""
+def status(
+    ctx: typer.Context,
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON"),
+) -> None:
+    """Version, health, tenants, quota config and metric snapshot."""
     del ctx
     with _api_client(_TRANSPORT) as client:
         data = _call(client, "GET", "/admin/status")
+    if json_out:
+        out.print(json.dumps(data, indent=2, sort_keys=True))
+        return
     out.print(_status_view(data))
 
 
 @app.command()
 @_guard
-def metrics(ctx: typer.Context) -> None:
-    """Prometheus text snapshot (scrape-friendly)."""
+def metrics(
+    ctx: typer.Context,
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON"),
+    prom: bool = typer.Option(False, "--prom", help="raw Prometheus text (GET /metrics)"),
+) -> None:
+    """Metric snapshot: formatted table, --json, or raw Prometheus text."""
     del ctx
+    if prom:
+        with _api_client(_TRANSPORT) as client:
+            response = client.get("/metrics")
+        if response.status_code >= 400:
+            raise CliError(f"GET /metrics → {response.status_code}")
+        out.print(response.text, end="")
+        return
     with _api_client(_TRANSPORT) as client:
-        response = client.get("/metrics")
-    if response.status_code >= 400:
-        raise CliError(f"GET /metrics → {response.status_code}")
-    out.print(response.text, end="")
+        data = _call(client, "GET", "/admin/status")
+    if json_out:
+        out.print(json.dumps(data["metrics"], indent=2, sort_keys=True))
+        return
+    out.print(_metrics_section(data["metrics"]))
 
 
 @app.command()
@@ -515,7 +554,7 @@ def monitor(
     errors: bool = typer.Option(False, "--errors", help="tail error outcomes only"),
     once: bool = typer.Option(False, "--once", help="render one frame and exit (scripting)"),
 ) -> None:
-    """Live dashboard: health, apps, metrics and recent requests."""
+    """Live dashboard: version, health, apps, metrics and recent requests."""
     del ctx
     if once:
         out.print(_monitor_frame(errors))
@@ -535,7 +574,7 @@ def monitor(
 @tenant_app.command("list")
 @_guard
 def tenant_list(
-    ctx: typer.Context, app_filter: str = typer.Option("", "--app", help="filter by App id")
+    ctx: typer.Context, app_filter: str = typer.Option("", "--app", help="filter by app id")
 ) -> None:
     """List registered tenants."""
     del ctx
@@ -562,7 +601,7 @@ def tenant_list(
 def tenant_verify(
     ctx: typer.Context,
     tenant_id: str = typer.Argument(..., help="tenant id"),
-    app_filter: str = typer.Option("", "--app", help="filter by App id"),
+    app_filter: str = typer.Option("", "--app", help="filter by app id"),
 ) -> None:
     """Check a tenant exists."""
     del ctx
@@ -581,7 +620,7 @@ def tenant_verify(
 def tenant_revoke(
     ctx: typer.Context,
     tenant_id: str = typer.Argument(..., help="tenant id"),
-    app_filter: str = typer.Option("", "--app", help="restrict to one App id (default: all rows)"),
+    app_filter: str = typer.Option("", "--app", help="restrict to one app id (default: all rows)"),
 ) -> None:
     """Immediately delete a tenant (kill switch)."""
     del ctx
@@ -600,7 +639,7 @@ def tenant_revoke(
 def tenant_reissue(
     ctx: typer.Context,
     tenant_id: str = typer.Argument(..., help="tenant id"),
-    app_filter: str = typer.Option(..., "--app", help="App the token belongs to"),
+    app_filter: str = typer.Option(..., "--app", help="app id the token belongs to"),
 ) -> None:
     """Mint a replacement token."""
     del ctx
@@ -642,7 +681,9 @@ def denylist_list(ctx: typer.Context) -> None:
 def denylist_add(
     ctx: typer.Context,
     key: str = typer.Argument(..., help="jti or sha256:<hex> token hash"),
-    expires: str = typer.Option("24h", "--expires", metavar="DURATION", help="default 24h"),
+    expires: str = typer.Option(
+        "24h", "--expires", metavar="DURATION", help="denial duration (default: 24h)"
+    ),
 ) -> None:
     """Deny a jti or sha256:<hex> token hash."""
     del ctx
@@ -657,10 +698,10 @@ def denylist_add(
 
 @config_app.command("list")
 @_guard
-def app_list(ctx: typer.Context, config: Path | None = _CONFIG_OPT) -> None:
+def app_list(ctx: typer.Context) -> None:
     """List apps from config.yaml (offline)."""
     del ctx
-    entries = configedit.list_apps(_config_path(config))
+    entries = configedit.list_apps(_config_path())
     table = Table(box=box.SIMPLE)
     for column in ("id", "bundle_id", "team_id", "key_id", "environments"):
         table.add_column(column)
