@@ -20,15 +20,15 @@ from pathlib import Path
 
 import httpx
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .admin import admin_router
 from .api import v1_router
 from .apns import APNsSender, KeyRegistry
+from .checks import load_issuer_key
 from .config import ConfigError, RelayConfig, load_config
 from .errors import ApiError
 from .metrics import EventLog, Metrics
@@ -37,23 +37,50 @@ from .signing import sha256hex
 from .store import Store
 
 DEFAULT_CONFIG = "/etc/apns-relay/config.yaml"
-# The API root (/) answers with a JSON pointer to the docs site; the docs
-# land on this repo's GitHub Pages project URL. The image bakes
-# DOCS_DOMAIN over this default for operators hosting docs elsewhere.
+# The API root (/) is a small static landing page linking to the docs site
+# (this repo's GitHub Pages by default; the image bakes DOCS_DOMAIN over
+# this default for operators hosting docs elsewhere) and, when the operator
+# enabled them, to the interactive API docs on this listener.
 DEFAULT_DOCS_DOMAIN = "timlaing.github.io/apns-push-relay"
 
-
-def load_issuer_key(path: Path) -> Ed25519PrivateKey:
-    """Grant-issuer key: a single Ed25519 private key in a PEM file (v1)."""
-    try:
-        key = load_pem_private_key(path.read_bytes(), password=None)
-    except FileNotFoundError:
-        raise ConfigError(f"enrollment.grant_issuer_key not found: {path}") from None
-    except ValueError:
-        raise ConfigError(f"enrollment.grant_issuer_key is not a valid PEM key: {path}") from None
-    if not isinstance(key, Ed25519PrivateKey):
-        raise ConfigError(f"enrollment.grant_issuer_key must be an Ed25519 key: {path}")
-    return key
+_LANDING_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>apns-push-relay</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 36rem;
+      margin: 12vh auto;
+      padding: 0 1.25rem;
+      line-height: 1.55;
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+    p { margin-top: 0; opacity: 0.75; }
+    ul { list-style: none; padding: 0; margin: 1.5rem 0 0; }
+    li { margin: 0.7rem 0; }
+    a { font-weight: 600; }
+    small { display: block; opacity: 0.6; }
+  </style>
+</head>
+<body>
+  <h1>apns-push-relay</h1>
+  <p>A self-hostable API that delivers APNs pushes on behalf of your backends
+     &mdash; without handing over your Apple keys, and with quotas, a
+     denylist and real enrollment built in.</p>
+  <ul>
+    <li><a href="%(docs)s">Documentation</a><small>setup, architecture,
+      enrollment spec</small></li>%(swagger)s
+  </ul>
+</body>
+</html>
+"""
+_SWAGGER_LINK = """
+    <li><a href="/docs">API reference</a><small>interactive Swagger UI for
+      this relay</small></li>"""
 
 
 @dataclass
@@ -235,10 +262,17 @@ def _assemble(state: AppState, *, public: bool, admin: bool) -> FastAPI:
     if public:
 
         @app.get("/", include_in_schema=False)
-        async def docs_pointer() -> dict[str, str]:
-            """API root: JSON pointer to the docs site (landing on GitHub Pages)."""
+        async def landing() -> HTMLResponse:
+            """A small landing page: docs link (+ the API reference link
+            when the operator enabled the interactive docs)."""
             domain = os.environ.get("DOCS_DOMAIN", DEFAULT_DOCS_DOMAIN)
-            return {"docs": f"https://{domain}/"}
+            return HTMLResponse(
+                _LANDING_PAGE
+                % {
+                    "docs": f"https://{domain}/",
+                    "swagger": _SWAGGER_LINK if swagger else "",
+                }
+            )
 
     @app.exception_handler(ApiError)
     async def _api_error(request: Request, exc: ApiError) -> JSONResponse:

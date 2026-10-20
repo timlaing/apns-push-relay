@@ -25,15 +25,21 @@ and this project adheres to [Semantic Versioning].
   a TLS-terminating reverse proxy — instead of redirecting them. The
   default keeps port 80 redirecting unconditionally, and `/admin` 404s
   at the edge on both ports.
-- **The API root answers with the docs pointer**: `GET /` on the public
-  listener returns `{"docs": "…"}` (previously static nginx JSON). The
-  docs host is the image env `DOCS_DOMAIN` (default: the project's
-  GitHub Pages URL), so the `.env` knob is gone.
+- **A landing page at the API root**: `GET /` on the public listener
+  serves a small static page linking to the docs site (host = the image
+  env `DOCS_DOMAIN`, default: the project's GitHub Pages URL) and, when
+  `server.swagger_ui` is on, to the interactive API docs at `/docs`
+  (previously a JSON pointer / static nginx JSON).
 - **In-container config management**: compose mounts the deploy
   directory read-write (keys stay read-only), and the app commands go
   through the admin API — `docker compose exec relay relay app add`
   (no elevated user needed: the CLI makes API calls, the relay process
   writes the file) edits the live config with host-side backups.
+- **`relay doctor` runs through the admin API**: `GET /admin/doctor`
+  executes the pre-flight checks inside the running server (same
+  `{failures, checks}` shape as `--json`), and `relay doctor` is now an
+  API client. `relay doctor --offline` keeps the local-file checks —
+  it's what the container entrypoint runs before anything listens.
 - **`relay version`** and a `version` row in `relay status` —
   `/admin/status` reports the package version (shown by `monitor` too).
 - **Formatted metrics**: `relay metrics` renders the rich table (the
