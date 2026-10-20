@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-21
+
+### Security
+
+- **certifi 2026.10.19**: picks up the fix for a critical advisory —
+  the bundled emSign root CAs shipped compromised intermediate CA
+  keys. The container image carries certifi for outbound TLS, so this
+  refreshes the trust store the relay ships with.
+
 ## [0.3.0] - 2026-10-20
 
 ### Added
@@ -166,7 +175,8 @@ and this project adheres to [Semantic Versioning].
   enrollment spec's Status/Version/Applies-to/License header lines merged
   into a single run-on paragraph.
 
-[Unreleased]: https://github.com/timlaing/apns-push-relay/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/timlaing/apns-push-relay/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.3.1
 [0.3.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.3.0
 [0.2.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.2.0
 [0.1.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.1.0
