@@ -727,11 +727,17 @@ def denylist_add(
 
 @config_app.command("list")
 @_guard
-def app_list(ctx: typer.Context) -> None:
+def app_list(
+    ctx: typer.Context,
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON"),
+) -> None:
     """List apps from config.yaml."""
     del ctx
     with _api_client(_TRANSPORT) as client:
         data = _call(client, "GET", "/admin/apps")
+    if json_out:
+        out.print(json.dumps(data, indent=2, sort_keys=True), markup=False)
+        return
     table = Table(box=box.SIMPLE)
     for column in ("id", "bundle_id", "team_id", "key_id", "environments"):
         table.add_column(column)
@@ -763,6 +769,7 @@ def app_add(
     kind: list[str] = typer.Option([], "--kind", help="alert|background|liveActivity (repeatable)"),
     live_activity: bool = typer.Option(True, "--live-activity/--no-live-activity"),
     yes: bool = typer.Option(False, "--yes", "-y", help="accept defaults, no prompts"),
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON"),
 ) -> None:
     """Add an app to config.yaml (picks a key when --key-id is omitted)."""
     del ctx
@@ -816,15 +823,21 @@ def app_add(
         "live_activity": live_activity and "liveActivity" in kinds,
         "attest_environment": attest_environment,
     }
-    out.print(
-        f"Adding {app_id}: bundle={bundle_id} team={team_id} key=AuthKey_{key_id}.p8"
-        f" envs={','.join(environments)} kinds={','.join(kinds)}"
-        f" attest={attest_environment}"
-    )
+    if not json_out:
+        out.print(f"Adding {app_id}:")
+        out.print(f"  bundle={bundle_id}")
+        out.print(f"  team={team_id}")
+        out.print(f"  key=AuthKey_{key_id}.p8")
+        out.print(f"  envs={','.join(environments)}")
+        out.print(f"  kinds={','.join(kinds)}")
+        out.print(f"  attest={attest_environment}")
     if not yes and not typer.confirm(f"Add {app_id} to config.yaml?"):
         raise typer.Exit(0)
     with _api_client(_TRANSPORT) as client:
-        _call(client, "POST", "/admin/apps", json=body)
+        created = _call(client, "POST", "/admin/apps", json=body)
+    if json_out:
+        out.print(json.dumps(created, indent=2, sort_keys=True), markup=False)
+        return
     out.print(f"[green]ok[/green]    added {app_id} to config.yaml (backup: config.yaml.bak)")
     out.print("note  restart the relay to apply (running state unchanged until then)")
 
@@ -835,13 +848,17 @@ def app_remove(
     ctx: typer.Context,
     app_id: str = typer.Argument(..., help="app id to remove"),
     yes: bool = typer.Option(False, "--yes", "-y", help="no confirmation prompt"),
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON"),
 ) -> None:
     """Remove an app from config.yaml."""
     del ctx
     if not yes and not typer.confirm(f"Remove {app_id!r} from config.yaml?"):
         raise typer.Exit(0)
     with _api_client(_TRANSPORT) as client:
-        _call(client, "DELETE", f"/admin/apps/{app_id}")
+        data = _call(client, "DELETE", f"/admin/apps/{app_id}")
+    if json_out:
+        out.print(json.dumps(data, indent=2, sort_keys=True), markup=False)
+        return
     out.print(f"[green]ok[/green]    removed {app_id} from config.yaml (backup: config.yaml.bak)")
     out.print("note  restart the relay to apply (running state unchanged until then)")
 

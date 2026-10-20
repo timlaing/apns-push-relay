@@ -126,8 +126,8 @@ server {
     }
 
     # API root proxies to the relay, which answers with a JSON pointer to
-    # the docs site (landing lives on GitHub Pages; DOCS_DOMAIN is baked
-    # into the relay image).
+    # the docs site (landing lives on GitHub Pages; the docs host is an
+    # env on the relay image, never rendered here).
     location / {
         proxy_pass http://relay:8001;
         proxy_set_header Host $host;

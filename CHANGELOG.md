@@ -17,7 +17,9 @@ and this project adheres to [Semantic Versioning].
   interactively picks from the server's `keys/AuthKey_*.p8` (fully
   scriptable with flags + `--yes`); the server-side edit preserves
   comments and writes a `config.yaml.bak` backup before each change,
-  and replies flag that a restart applies it.
+  replies flag that a restart applies it, `add` shows a per-line
+  summary before the confirmation, and `--json` on all three prints
+  the API payload machine-readable.
 - **Behind-proxy mode**: `FORCE_HTTPS=0` (`.env`) makes port 80 serve
   requests arriving with `X-Forwarded-Proto: https` — for stacks behind
   a TLS-terminating reverse proxy — instead of redirecting them. The

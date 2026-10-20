@@ -1138,6 +1138,19 @@ def test_app_list_renders_table(monkeypatch, capsys) -> None:
     assert "beta" in out and "TEAMID0002" in out
 
 
+def test_app_list_json(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/admin/apps"
+        return httpx.Response(200, json=APPS_JSON)
+
+    assert main(["app", "list", "--json"], transport=httpx.MockTransport(handler)) == 0
+    out = capsys.readouterr().out
+    assert json.loads(out) == APPS_JSON  # the API payload, verbatim
+    assert "╭─" not in out  # JSON only, no table
+
+
 def test_app_list_requires_admin_token(monkeypatch, capsys) -> None:
     # app commands are API clients now — no token, no request
     monkeypatch.delenv("RELAY_ADMIN_TOKEN", raising=False)
@@ -1219,6 +1232,46 @@ def test_app_add_noninteractive(monkeypatch, capsys) -> None:
     out = capsys.readouterr().out
     assert "added demo" in out
     assert "restart the relay to apply" in out
+    # the pre-confirm summary is one field per line
+    assert "Adding demo:" in out
+    assert "  bundle=com.example.demo" in out
+    assert "  key=AuthKey_ABCDEF0123.p8" in out
+    assert "  attest=development" in out
+
+
+def test_app_add_json(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        body = json.loads(request.content)
+        return httpx.Response(201, json={"app": body, "restartRequired": True})
+
+    argv = [
+        "app",
+        "add",
+        "--yes",
+        "--json",
+        "--key-id",
+        "ABCDEF0123",
+        "--id",
+        "demo",
+        "--bundle-id",
+        "com.example.demo",
+        "--team-id",
+        TEAM,
+    ]
+    assert main(argv, transport=httpx.MockTransport(handler)) == 0
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["restartRequired"] is True
+    assert payload["app"]["id"] == "demo"
+    assert payload["app"]["key_id"] == "ABCDEF0123"
+    assert payload["app"]["bundle_id"] == "com.example.demo"
+    # stdout is machine-readable: no human summary, ok line, or restart note
+    assert "Adding" not in out
+    assert "added demo" not in out
+    assert "restart the relay" not in out
 
 
 def test_app_add_yes_requires_flags(monkeypatch, capsys) -> None:
@@ -1422,6 +1475,26 @@ def test_app_remove_yes(monkeypatch, capsys) -> None:
     out = capsys.readouterr().out
     assert "removed alpha" in out
     assert "restart the relay to apply" in out
+
+
+def test_app_remove_json(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "DELETE"
+        assert request.url.path == "/admin/apps/alpha"
+        return httpx.Response(200, json={"removed": "alpha", "restartRequired": True})
+
+    assert (
+        main(
+            ["app", "remove", "alpha", "--yes", "--json"],
+            transport=httpx.MockTransport(handler),
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert json.loads(out) == {"removed": "alpha", "restartRequired": True}
+    assert "removed alpha from config.yaml" not in out  # machine-readable stdout
 
 
 def test_app_remove_unknown_id_errors(monkeypatch, capsys) -> None:
