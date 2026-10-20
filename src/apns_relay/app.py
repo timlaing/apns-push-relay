@@ -13,6 +13,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
+from importlib.metadata import version
 from pathlib import Path
 
 import httpx
@@ -179,7 +180,8 @@ def _assemble(state: AppState) -> FastAPI:
     swagger = state.config.server.swagger_ui
     app = FastAPI(
         title="apns-push-relay",
-        version="1.0.0",
+        # Schema version tracks the package version (releases are v* tags).
+        version=version("apns-push-relay"),
         # Interactive API docs are an operator opt-in (server.swagger_ui);
         # disabled, these routes do not exist at all (404).
         docs_url="/docs" if swagger else None,

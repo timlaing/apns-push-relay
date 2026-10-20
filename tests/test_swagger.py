@@ -8,6 +8,7 @@ admin API is never in the schema and stays token-gated either way.
 from __future__ import annotations
 
 import dataclasses
+from importlib.metadata import version
 
 from fastapi.testclient import TestClient
 
@@ -46,3 +47,10 @@ def test_admin_stays_token_gated_when_swagger_enabled(env) -> None:
         response = client.get("/admin/status")
         assert response.status_code == 401
         assert response.json() == {"error": "bad_admin_token"}
+
+
+def test_schema_version_tracks_package_version(env) -> None:
+    """The schema's info.version is the package version (releases = v* tags)."""
+    with TestClient(_swagger_app(env)) as client:
+        schema = client.get("/openapi.json").json()
+    assert schema["info"]["version"] == version("apns-push-relay")
