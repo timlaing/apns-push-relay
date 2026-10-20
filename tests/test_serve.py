@@ -77,12 +77,22 @@ def test_api_root_is_a_landing_page_on_public_only(env, monkeypatch) -> None:
         assert response.headers["content-type"].startswith("text/html")
         assert "<h1>apns-push-relay</h1>" in response.text
         assert 'href="https://timlaing.github.io/apns-push-relay/"' in response.text
+        assert 'href="https://github.com/timlaing/apns-push-relay"' in response.text
+        for asset in (
+            "relay-logo.png",
+            "favicon.ico",
+            "favicon.png",
+            "apple-touch-icon.png",
+            "relay-background.webp",
+        ):
+            assert client.get(f"/assets/{asset}").status_code == 200
         assert "/docs" not in response.text  # swagger off: no API-reference link
         # DOCS_DOMAIN is read per request — the image bakes it, .env needn't
         monkeypatch.setenv("DOCS_DOMAIN", "docs.example.org")
         assert 'href="https://docs.example.org/"' in client.get("/").text
     with TestClient(admin) as client:
         assert client.get("/").status_code == 404
+        assert client.get("/assets/relay-logo.png").status_code == 404
 
 
 def test_api_root_links_the_interactive_docs_when_enabled(env) -> None:
@@ -92,7 +102,8 @@ def test_api_root_links_the_interactive_docs_when_enabled(env) -> None:
     _admin, public = _split(env, config=config)
     with TestClient(public) as client:
         text = client.get("/").text
-        assert '<a href="/docs">API reference</a>' in text
+        assert '<a class="button" href="/docs">' in text
+        assert "API reference <span" in text
 
 
 def test_servers_bind_admin_8000_and_public_8001() -> None:

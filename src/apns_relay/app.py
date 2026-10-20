@@ -24,6 +24,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import StaticFiles
 
 from .admin import admin_router
 from .api import v1_router
@@ -43,44 +44,20 @@ DEFAULT_CONFIG = "/etc/apns-relay/config.yaml"
 # enabled them, to the interactive API docs on this listener.
 DEFAULT_DOCS_DOMAIN = "timlaing.github.io/apns-push-relay"
 
-_LANDING_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>apns-push-relay</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      max-width: 36rem;
-      margin: 12vh auto;
-      padding: 0 1.25rem;
-      line-height: 1.55;
-    }
-    h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
-    p { margin-top: 0; opacity: 0.75; }
-    ul { list-style: none; padding: 0; margin: 1.5rem 0 0; }
-    li { margin: 0.7rem 0; }
-    a { font-weight: 600; }
-    small { display: block; opacity: 0.6; }
-  </style>
-</head>
-<body>
-  <h1>apns-push-relay</h1>
-  <p>A self-hostable API that delivers APNs pushes on behalf of your backends
-     &mdash; without handing over your Apple keys, and with quotas, a
-     denylist and real enrollment built in.</p>
-  <ul>
-    <li><a href="%(docs)s">Documentation</a><small>setup, architecture,
-      enrollment spec</small></li>%(swagger)s
-  </ul>
-</body>
-</html>
-"""
-_SWAGGER_LINK = """
-    <li><a href="/docs">API reference</a><small>interactive Swagger UI for
-      this relay</small></li>"""
+_ASSETS = Path(__file__).with_name("assets")
+_LANDING_PAGE = (
+    (_ASSETS / "index.html")
+    .read_text()
+    .replace("%", "%%")
+    .replace("%%(docs)s", "%(docs)s")
+    .replace("%%(swagger)s", "%(swagger)s")
+    .replace("%%(version)s", "%(version)s")
+)
+_SWAGGER_LINK = (
+    '<a class="button" href="/docs">'
+    '<img class="icon" src="/assets/icon-swagger.png" alt="" width="18" height="18">'
+    'API reference <span aria-hidden="true">↗</span></a>'
+)
 
 
 @dataclass
@@ -260,6 +237,7 @@ def _assemble(state: AppState, *, public: bool, admin: bool) -> FastAPI:
     app.state.relay = state
 
     if public:
+        app.mount("/assets", StaticFiles(directory=_ASSETS), name="assets")
 
         @app.get("/", include_in_schema=False)
         async def landing() -> HTMLResponse:
@@ -271,6 +249,7 @@ def _assemble(state: AppState, *, public: bool, admin: bool) -> FastAPI:
                 % {
                     "docs": f"https://{domain}/",
                     "swagger": _SWAGGER_LINK if swagger else "",
+                    "version": app.version,
                 }
             )
 
