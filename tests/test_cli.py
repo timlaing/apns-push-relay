@@ -80,6 +80,7 @@ def _doctor_env(monkeypatch: pytest.MonkeyPatch, config: Path) -> None:
     monkeypatch.setenv("RELAY_CONFIG", str(config))
     monkeypatch.setenv("RELAY_ADMIN_TOKEN", ADMIN_TOKEN)
     monkeypatch.setenv("RELAY_MASTER_SECRET", SECRET)
+    monkeypatch.setenv("COLUMNS", "260")  # rich tables: keep rows on one line
 
 
 def _instance(tmp_path: Path, *, roots: bool = True) -> Path:
@@ -101,22 +102,50 @@ def test_doctor_happy_path(tmp_path: Path, monkeypatch, capsys) -> None:
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 0
     out = capsys.readouterr().out
+    assert "╭─ doctor ─" in out
     assert "all checks passed" in out
-    assert "ok    config: 1 app(s)" in out
-    assert "ok    apns-keys: 1 key(s)" in out
-    assert "ok    issuer-key: Ed25519 id=" in out
-    assert f"ok    attest-root[production]: {config.parent / 'production-root.pem'}" in out
-    assert "ok    master-secret: present (>=32 chars)" in out
-    assert "ok    database:" in out
+    assert "1 app(s) from" in out
+    assert "1 key(s), JWT pre-signed" in out
+    assert "Ed25519 id=" in out
+    assert str(config.parent / "production-root.pem") in out
+    assert "present (>=32 chars)" in out
+    assert "database" in out
+
+
+def test_doctor_json_reports_checks(tmp_path: Path, monkeypatch, capsys) -> None:
+    config = _instance(tmp_path)
+    _doctor_env(monkeypatch, config)
+    assert main(["doctor", "--json"]) == 0
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["failures"] == 0
+    assert "doctor:" not in out  # JSON mode: no human summary line
+    assert payload["checks"][0]["check"] == "config"
+    assert payload["checks"][0]["status"] == "ok"
+    assert payload["checks"][0]["detail"].startswith("1 app(s) from")
+    by_name = {row["check"]: row["status"] for row in payload["checks"]}
+    assert by_name["master-secret"] == "ok"
+    assert by_name["database"] == "ok"
+
+
+def test_doctor_json_reports_failures(tmp_path: Path, monkeypatch, capsys) -> None:
+    config = _instance(tmp_path)
+    _doctor_env(monkeypatch, config)
+    monkeypatch.setenv("RELAY_MASTER_SECRET", "too-short")
+    assert main(["doctor", "--json"]) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["failures"] == 1
+    failed = [row for row in payload["checks"] if row["status"] == "fail"]
+    assert [row["check"] for row in failed] == ["master-secret"]
+    assert "RELAY_MASTER_SECRET" in failed[0]["detail"]
 
 
 def test_doctor_config_not_found(tmp_path: Path, monkeypatch, capsys) -> None:
     _doctor_env(monkeypatch, tmp_path / "absent.yaml")
     assert main(["doctor"]) == 1
     out = capsys.readouterr().out
-    assert "FAIL  config" in out
     assert "config not found" in out
-    assert "doctor: 1 check failed" in out
+    assert "doctor: 1 check(s) failed" in out
 
 
 def test_doctor_config_invalid_yaml(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -125,9 +154,8 @@ def test_doctor_config_invalid_yaml(tmp_path: Path, monkeypatch, capsys) -> None
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 1
     out = capsys.readouterr().out
-    assert "FAIL  config" in out
     assert "invalid YAML" in out
-    assert "doctor: 1 check failed" in out
+    assert "doctor: 1 check(s) failed" in out
 
 
 def test_doctor_missing_admin_token_fails_config_check(tmp_path, monkeypatch, capsys) -> None:
@@ -138,10 +166,9 @@ def test_doctor_missing_admin_token_fails_config_check(tmp_path, monkeypatch, ca
     # reports before any later check runs.
     assert main(["doctor"]) == 1
     out = capsys.readouterr().out
-    assert "FAIL  config" in out
     assert "admin token not provided" in out
     assert "apns-keys" not in out
-    assert "doctor: 1 check failed" in out
+    assert "doctor: 1 check(s) failed" in out
 
 
 def test_doctor_short_master_secret_fails_but_checks_continue(
@@ -152,10 +179,10 @@ def test_doctor_short_master_secret_fails_but_checks_continue(
     monkeypatch.setenv("RELAY_MASTER_SECRET", "too-short")
     assert main(["doctor"]) == 1
     out = capsys.readouterr().out
-    assert "ok    config" in out
-    assert "ok    apns-keys" in out
-    assert "ok    issuer-key" in out
-    assert "FAIL  master-secret" in out
+    assert "1 app(s) from" in out
+    assert "apns-keys" in out
+    assert "Ed25519 id=" in out
+    assert "RELAY_MASTER_SECRET missing" in out
     assert "doctor: 1 check(s) failed" in out
 
 
@@ -165,10 +192,11 @@ def test_doctor_missing_apns_key_fails_but_checks_continue(tmp_path, monkeypatch
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 1
     out = capsys.readouterr().out
-    assert "FAIL  apns-keys" in out
-    assert "ok    issuer-key" in out  # remaining checks still run
-    assert "ok    master-secret" in out
-    assert "ok    database" in out
+    assert "apns-keys" in out
+    assert "Ed25519 id=" in out  # remaining checks still run
+    assert "present (>=32 chars)" in out
+    assert "database" in out
+    assert "doctor: 1 check(s) failed" in out
 
 
 def test_doctor_missing_issuer_key(tmp_path, monkeypatch, capsys) -> None:
@@ -177,8 +205,7 @@ def test_doctor_missing_issuer_key(tmp_path, monkeypatch, capsys) -> None:
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 1
     out = capsys.readouterr().out
-    assert "ok    apns-keys" in out
-    assert "FAIL  issuer-key" in out
+    assert "apns-keys" in out
     assert "grant_issuer_key not found" in out
     assert "doctor: 1 check(s) failed" in out
 
@@ -189,8 +216,8 @@ def test_doctor_broken_attest_root(tmp_path, monkeypatch, capsys) -> None:
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 1
     out = capsys.readouterr().out
-    assert "FAIL  attest-root[production]" in out
-    assert "ok    issuer-key" in out  # root failure doesn't stop the run
+    assert "attest-root[production]" in out
+    assert "Ed25519 id=" in out  # root failure doesn't stop the run
     assert "doctor: 1 check(s) failed" in out
 
 
@@ -199,7 +226,7 @@ def test_doctor_without_attest_roots_notes_and_passes(tmp_path, monkeypatch, cap
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 0
     out = capsys.readouterr().out
-    assert "note  attest-roots: none configured" in out
+    assert "none configured" in out
     assert "all checks passed" in out
 
 
@@ -212,9 +239,8 @@ def test_doctor_unwritable_database_path(tmp_path, monkeypatch, capsys) -> None:
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 1
     out = capsys.readouterr().out
-    assert "FAIL  apns-keys" not in out
-    assert "ok    database" not in out
-    assert "FAIL  database" in out
+    assert "JWT pre-signed" in out  # apns-keys passed
+    assert "database" in out
     assert "doctor: 1 check(s) failed" in out
 
 
@@ -240,10 +266,10 @@ def test_doctor_root_detail_shows_fingerprint_expiry_and_pin_warn(
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 0
     out = capsys.readouterr().out
-    assert "ok    attest-root[production]:" in out
+    assert "attest-root[production]" in out
     assert "sha256=" in out
     assert "expires " in out
-    assert "warn  attest-root[production]: sha256 differs from the pinned Apple root" in out
+    assert "sha256 differs from the pinned Apple root" in out
     assert "all checks passed" in out
 
 
@@ -257,7 +283,7 @@ def test_doctor_root_matching_pin_has_no_warn(tmp_path, monkeypatch, capsys) -> 
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 0
     out = capsys.readouterr().out
-    assert "warn  attest-root" not in out
+    assert "sha256 differs" not in out
     assert "all checks passed" in out
 
 
@@ -270,7 +296,7 @@ def test_doctor_root_expired_fails(tmp_path, monkeypatch, capsys) -> None:
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 1
     out = capsys.readouterr().out
-    assert "FAIL  attest-root[production]:" in out
+    assert "attest-root[production]" in out
     assert "EXPIRED" in out
 
 
@@ -283,9 +309,14 @@ def test_doctor_root_expiring_soon_warns_but_passes(tmp_path, monkeypatch, capsy
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 0
     out = capsys.readouterr().out
-    assert "warn  attest-root[production]:" in out
-    assert "expires in" in out
+    assert "warn" in out
+    assert "attest-root[production]" in out
     assert "all checks passed" in out
+    assert main(["doctor", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    rows = [row for row in payload["checks"] if row["check"] == "attest-root[production]"]
+    assert [row["status"] for row in rows] == ["warn", "warn"]  # expiry + pinned-root
+    assert any("expires in" in row["detail"] for row in rows)
 
 
 def test_doctor_root_missing_file_fails(tmp_path, monkeypatch, capsys) -> None:
@@ -293,7 +324,7 @@ def test_doctor_root_missing_file_fails(tmp_path, monkeypatch, capsys) -> None:
     config = write_config(base, roots={"production": base / "absent.pem"})
     _doctor_env(monkeypatch, config)
     assert main(["doctor"]) == 1
-    assert "FAIL  attest-root[production]" in capsys.readouterr().out
+    assert "attest-root[production]" in capsys.readouterr().out
 
 
 def test_fetch_roots_downloads_missing_file(tmp_path, monkeypatch, capsys) -> None:
@@ -382,8 +413,8 @@ def test_doctor_fetch_roots_flag_downloads_and_checks(tmp_path, monkeypatch, cap
     _doctor_env(monkeypatch, config)
     assert main(["doctor", "--fetch-roots"], transport=transport) == 0
     out = capsys.readouterr().out
-    assert "ok    fetch-root[production]:" in out
-    assert "ok    attest-root[production]:" in out
+    assert "fetch-root[production]" in out
+    assert "attest-root[production]" in out
     assert dest.read_bytes() == rotated.pem
     assert "all checks passed" in out
 
@@ -396,7 +427,7 @@ def test_doctor_fetch_roots_download_failure_fails_check(tmp_path, monkeypatch, 
     _doctor_env(monkeypatch, config)
     assert main(["doctor", "--fetch-roots"], transport=transport) == 1
     out = capsys.readouterr().out
-    assert "FAIL  fetch-root[production]:" in out
+    assert "fetch-root[production]" in out
     assert "HTTP 503" in out
     assert not dest.exists()  # nothing written on failure
 
@@ -406,7 +437,14 @@ def test_doctor_fetch_roots_download_failure_fails_check(tmp_path, monkeypatch, 
 
 def test_version_command(capsys) -> None:
     assert main(["version"]) == 0
-    assert capsys.readouterr().out == f"relay {package_version('apns-push-relay')}\n"
+    out = capsys.readouterr().out
+    assert "╭─ version ─" in out
+    assert f"relay {package_version('apns-push-relay')}" in out
+
+
+def test_version_json(capsys) -> None:
+    assert main(["version", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == {"version": package_version("apns-push-relay")}
 
 
 def test_status_renders_snapshot(monkeypatch, capsys) -> None:

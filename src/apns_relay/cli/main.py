@@ -32,6 +32,7 @@ from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 from typer import _click as _vendored_click  # typer >= 0.27 vendors click
 
 from .. import attest as attest_mod
@@ -63,17 +64,15 @@ def _section(title: str, renderable: Any, *, border_style: str = "none") -> Pane
 _TRANSPORT: httpx.BaseTransport | None = None
 
 app = typer.Typer(
-    help="Admin CLI for apns-push-relay (internal admin API or offline checks).",
+    help="Admin CLI for the apns-push-relay server.",
     no_args_is_help=True,
     rich_markup_mode="rich",
 )
-tenant_app = typer.Typer(
-    help="Manage registered tenants (list, verify, revoke, reissue).", no_args_is_help=True
-)
+tenant_app = typer.Typer(help="Manage registered tenants.", no_args_is_help=True)
 denylist_app = typer.Typer(
-    help="Manage the grant and destination-token denylist (list, add).", no_args_is_help=True
+    help="Manage the grant and destination-token denylist.", no_args_is_help=True
 )
-config_app = typer.Typer(help="Add and remove apps in config.yaml (offline).", no_args_is_help=True)
+config_app = typer.Typer(help="Manage apps in config.yaml.", no_args_is_help=True)
 app.add_typer(tenant_app, name="tenant")
 app.add_typer(denylist_app, name="denylist")
 app.add_typer(config_app, name="app")
@@ -211,6 +210,7 @@ def _fetch_attest_roots(
     only_missing: bool,
     ok: Any,
     fail: Any,
+    note: Any,
 ) -> int:
     """Download the App Attest root into every configured path.
 
@@ -230,9 +230,7 @@ def _fetch_attest_roots(
             continue  # environments may share one root file — fetch it once
         seen.add(root_path)
         if only_missing and root_path.exists():
-            out.print(
-                f"note  fetch-root[{environment}]: {escape(str(root_path))} present — skipped"
-            )
+            note(f"fetch-root[{environment}]", f"{root_path} present — skipped")
             continue
         try:
             root = fetch_attest_root(url, root_path, transport=transport)
@@ -244,20 +242,26 @@ def _fetch_attest_roots(
     return failures
 
 
-def _doctor_report(config: RelayConfig, transport: httpx.BaseTransport | None) -> int:
-    """Run every offline check; returns the number of failures."""
-    failures = 0
+def _doctor_results(
+    config: RelayConfig, transport: httpx.BaseTransport | None, *, fetch_roots: bool
+) -> list[dict[str, str]]:
+    """Run every offline check; rows are ``{"check", "status", "detail"}``."""
+    rows: list[dict[str, str]] = []
 
     def ok(label: str, detail: str) -> None:
-        out.print(f"[green]ok[/green]    {escape(label)}: {escape(detail)}")
+        rows.append({"check": label, "status": "ok", "detail": detail})
 
     def fail(label: str, detail: str) -> None:
-        nonlocal failures
-        failures += 1
-        out.print(f"[bold red]FAIL[/bold red]  {escape(label)}: {escape(detail)}")
+        rows.append({"check": label, "status": "fail", "detail": detail})
 
     def warn(label: str, detail: str) -> None:
-        out.print(f"[yellow]warn[/yellow]  {escape(label)}: {escape(detail)}")
+        rows.append({"check": label, "status": "warn", "detail": detail})
+
+    def note(label: str, detail: str) -> None:
+        rows.append({"check": label, "status": "note", "detail": detail})
+
+    if fetch_roots:
+        _fetch_attest_roots(config, transport, only_missing=False, ok=ok, fail=fail, note=note)
 
     try:
         registry = KeyRegistry(config.enabled_apps)
@@ -274,9 +278,9 @@ def _doctor_report(config: RelayConfig, transport: httpx.BaseTransport | None) -
         fail("issuer-key", str(exc))
 
     if not config.enrollment.attest_root_certs:
-        out.print(
-            "note  attest-roots: none configured — enroll/finish fails closed"
-            " until App Attest roots are supplied (M4)"
+        note(
+            "attest-roots",
+            "none configured — enroll/finish fails closed until App Attest roots are supplied (M4)",
         )
     for environment, root_path in sorted(config.enrollment.attest_root_certs.items()):
         try:
@@ -315,7 +319,23 @@ def _doctor_report(config: RelayConfig, transport: httpx.BaseTransport | None) -
         ok("database", str(config.database))
     except Exception as exc:
         fail("database", str(exc))
-    return failures
+    return rows
+
+
+def _doctor_section(rows: list[dict[str, str]]) -> Panel:
+    """The doctor checks as a legend-section table."""
+    styles = {"ok": "green", "warn": "yellow", "fail": "bold red", "note": "yellow"}
+    table = Table(box=box.SIMPLE)
+    table.add_column("check")
+    table.add_column("status")
+    table.add_column("detail")
+    for row in rows:
+        table.add_row(
+            escape(row["check"]),
+            Text(row["status"], style=styles.get(row["status"], "")),
+            escape(row["detail"]),
+        )
+    return _section("doctor", table)
 
 
 @app.command()
@@ -325,34 +345,38 @@ def doctor(
     fetch_roots: bool = typer.Option(
         False, "--fetch-roots", help="re-download the App Attest root(s) first"
     ),
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON"),
 ) -> None:
-    """Offline pre-flight: config + keys + JWT pre-sign + secrets."""
+    """Verify the relay is configured correctly before it serves traffic."""
     del ctx
     config_path = str(_config_path())
     try:
         config = load_config(config_path, admin_token=os.environ.get("RELAY_ADMIN_TOKEN"))
     except ConfigError as exc:
-        out.print(f"[bold red]FAIL[/bold red]  config: {exc}")
-        out.print("doctor: 1 check failed")
-        raise typer.Exit(1) from None
-    out.print(f"[green]ok[/green]    config: {len(config.apps)} app(s) from {config_path}")
-
-    failures = 0
-    if fetch_roots:
-
-        def ok(label: str, detail: str) -> None:
-            out.print(f"[green]ok[/green]    {escape(label)}: {escape(detail)}")
-
-        def fail(label: str, detail: str) -> None:
-            out.print(f"[bold red]FAIL[/bold red]  {escape(label)}: {escape(detail)}")
-
-        failures += _fetch_attest_roots(config, _TRANSPORT, only_missing=False, ok=ok, fail=fail)
-    failures += _doctor_report(config, _TRANSPORT)
-
+        rows = [{"check": "config", "status": "fail", "detail": str(exc)}]
+    else:
+        rows = [
+            {
+                "check": "config",
+                "status": "ok",
+                "detail": f"{len(config.apps)} app(s) from {config_path}",
+            },
+            *_doctor_results(config, _TRANSPORT, fetch_roots=fetch_roots),
+        ]
+    failures = sum(1 for row in rows if row["status"] == "fail")
+    if json_out:
+        out.print(
+            json.dumps({"failures": failures, "checks": rows}, indent=2, sort_keys=True),
+            markup=False,
+        )
+    else:
+        out.print(_doctor_section(rows))
+        if failures:
+            out.print(f"doctor: {failures} check(s) failed")
+        else:
+            out.print("doctor: all checks passed")
     if failures:
-        out.print(f"doctor: {failures} check(s) failed")
         raise typer.Exit(1)
-    out.print("doctor: all checks passed")
 
 
 @app.command()
@@ -378,10 +402,15 @@ def fetch_roots(
     def fail(label: str, detail: str) -> None:
         out.print(f"[bold red]FAIL[/bold red]  {escape(label)}: {escape(detail)}")
 
+    def note(label: str, detail: str) -> None:
+        out.print(f"note  {escape(label)}: {escape(detail)}")
+
     if not config.enrollment.attest_root_certs:
         out.print("note  fetch-roots: no attest_root_certs configured — nothing to fetch")
         return
-    failures = _fetch_attest_roots(config, _TRANSPORT, only_missing=if_missing, ok=ok, fail=fail)
+    failures = _fetch_attest_roots(
+        config, _TRANSPORT, only_missing=if_missing, ok=ok, fail=fail, note=note
+    )
     if failures:
         raise typer.Exit(1)
 
@@ -390,9 +419,17 @@ def fetch_roots(
 
 
 @app.command("version")
-def version_cmd() -> None:
+def version_cmd(
+    json_out: bool = typer.Option(False, "--json", help="machine-readable JSON"),
+) -> None:
     """Print the relay version."""
-    out.print(f"relay {package_version('apns-push-relay')}")
+    if json_out:
+        out.print(
+            json.dumps({"version": package_version("apns-push-relay")}, indent=2, sort_keys=True),
+            markup=False,
+        )
+        return
+    out.print(_section("version", f"relay {package_version('apns-push-relay')}"))
 
 
 # -- status / metrics / logs / monitor ----------------------------------------
@@ -466,7 +503,7 @@ def status(
     with _api_client(_TRANSPORT) as client:
         data = _call(client, "GET", "/admin/status")
     if json_out:
-        out.print(json.dumps(data, indent=2, sort_keys=True))
+        out.print(json.dumps(data, indent=2, sort_keys=True), markup=False)
         return
     out.print(_status_view(data))
 
@@ -478,7 +515,7 @@ def metrics(
     json_out: bool = typer.Option(False, "--json", help="machine-readable JSON"),
     prom: bool = typer.Option(False, "--prom", help="raw Prometheus text (GET /metrics)"),
 ) -> None:
-    """Metric snapshot: formatted table, --json, or raw Prometheus text."""
+    """Metric snapshot."""
     del ctx
     if prom:
         with _api_client(_TRANSPORT) as client:
@@ -490,7 +527,7 @@ def metrics(
     with _api_client(_TRANSPORT) as client:
         data = _call(client, "GET", "/admin/status")
     if json_out:
-        out.print(json.dumps(data["metrics"], indent=2, sort_keys=True))
+        out.print(json.dumps(data["metrics"], indent=2, sort_keys=True), markup=False)
         return
     out.print(_metrics_section(data["metrics"]))
 

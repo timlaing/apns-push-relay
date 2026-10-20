@@ -34,16 +34,23 @@ and this project adheres to [Semantic Versioning].
   `metrics` legend section, same as `status`); `--json` on `metrics`
   _and_ `status` prints machine-readable JSON (sorted, indented), and
   `metrics --prom` keeps the raw Prometheus text.
+- **`relay doctor` as a table**: the checks render in the usual legend
+  section (check / status / detail, coloured statuses) and `--json`
+  prints them machine-readable (`failures` count + ordered `checks`).
+  The summary line and exit code are unchanged.
 
 ### Changed
 
 - **`--config` only where configs are edited**: `app add` / `app remove`
   keep `--config`/`-c`; readers (`app list`, `doctor`, `fetch-roots`)
   resolve `$RELAY_CONFIG` (or the container default) only.
-- **CLI help text normalized**: group descriptions are full sentences
-  with a period, option helps are lowercase without one and use
-  `(default: …)` parentheticals; stale lines (metrics, status) now
-  match the new behaviour.
+- **CLI help trimmed to purpose**: group descriptions no longer list
+  their subcommands, command docstrings no longer advertise output
+  options, `doctor` states what it verifies instead of listing its
+  steps, and option helps use consistent `(default: …)` parentheticals.
+- **`--json` output is no longer mangled by rich markup**: JSON prints
+  pass through uninterpreted, so values containing brackets (e.g. the
+  `attest-root[production]` check name) survive intact.
 - **The image tracks `latest`**: compose's relay service now uses
   `ghcr.io/timlaing/apns-push-relay:latest` — the `RELAY_TAG`
   interpolation is gone (version-pinned tags are invisible to image
