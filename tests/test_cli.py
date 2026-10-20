@@ -7,15 +7,20 @@ no server and no admin API are involved.
 
 from __future__ import annotations
 
+import io
 import json
+import sys
 from pathlib import Path
 
 import httpx
 import pytest
+import typer.main as typer_main
 import yaml
 from cryptography.hazmat.primitives import hashes
+from typer import _click as vendored_click
 
 import apns_relay.attest as attest_mod
+import apns_relay.cli.main as cli_main
 from apns_relay.cli.main import CliError, _call, _duration_to_seconds, main
 from tests.conftest import ADMIN_TOKEN, APP_ID, KEY_ID, TENANT_ID, make_root, write_config
 
@@ -399,6 +404,7 @@ def test_doctor_fetch_roots_download_failure_fails_check(tmp_path, monkeypatch, 
 
 def test_status_renders_snapshot(monkeypatch, capsys) -> None:
     _auth(monkeypatch)
+    monkeypatch.setenv("COLUMNS", "220")  # rich tables: keep rows on one line
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/admin/status"
@@ -407,22 +413,20 @@ def test_status_renders_snapshot(monkeypatch, capsys) -> None:
 
     assert main(["status"], transport=httpx.MockTransport(handler)) == 0
     out = capsys.readouterr().out
-    assert "status:  ok" in out
-    assert "uptime:  42s" in out
-    assert "tenants: 3   denylisted: 1" in out
-    assert "apps:" in out
-    assert "  test-app (enabled, key TESTKEYID1, envs: sandbox, production, kinds: alert)" in out
-    assert "  second-app (disabled, key TESTKEYID1, envs: sandbox, kinds: background)" in out
-    assert (
-        "    quota: 5/min burst, 10/day, 3/min per token; grant ttl 900..86400s default 3600s"
-        in out
-    )
-    assert (
-        "    quota: 1/min burst, 2/day, 3/min per token; grant ttl 900..86400s default 900s" in out
-    )
-    assert "metrics:" in out
-    assert "  failures_total: bad_admin_token=4" in out
-    assert "  pushes_total: total=2, accepted=1" in out
+    assert "status" in out and "ok" in out
+    assert "uptime" in out and "42s" in out
+    assert "tenants" in out and "denylisted" in out
+    assert "test-app" in out and "second-app" in out
+    assert "enabled" in out and "disabled" in out
+    assert "TESTKEYID1" in out
+    assert "sandbox, production" in out and "background" in out
+    assert "5/min burst, 10/day, 3/min per token" in out
+    assert "900..86400s default 3600s" in out
+    assert "metrics" in out
+    assert "failures_total" in out
+    assert "bad_admin_token=4" in out
+    assert "pushes_total" in out
+    assert "total=2, accepted=1" in out
 
 
 def test_status_json_error_maps_to_exit_1(monkeypatch, capsys) -> None:
@@ -557,6 +561,7 @@ def test_logs_bad_since_duration(monkeypatch, capsys) -> None:
 
 def test_tenant_list_rows_with_app_filter(monkeypatch, capsys) -> None:
     _auth(monkeypatch)
+    monkeypatch.setenv("COLUMNS", "160")  # rich tables: keep rows on one line
     payload = {
         "tenants": [
             {
@@ -575,7 +580,10 @@ def test_tenant_list_rows_with_app_filter(monkeypatch, capsys) -> None:
 
     assert main(["tenant", "list", "--app", APP_ID], transport=httpx.MockTransport(handler)) == 0
     out = capsys.readouterr().out
-    assert f"{TENANT_ID:<32} {APP_ID:<20} registered {NOW_ISO}  last seen {NOW_ISO}\n" in out
+    assert TENANT_ID in out
+    assert APP_ID in out
+    assert "registered" in out and "last seen" in out  # column headers
+    assert NOW_ISO in out  # row timestamps
     assert dict(seen[0].url.params) == {"app": APP_ID}
     assert seen[0].url.path == "/admin/tenants"
 
@@ -701,10 +709,10 @@ def test_tenant_reissue_unknown_exits_1(monkeypatch, capsys) -> None:
 
 def test_tenant_reissue_requires_app(monkeypatch, capsys) -> None:
     _auth(monkeypatch)
-    with pytest.raises(SystemExit) as excinfo:
-        main(["tenant", "reissue", TENANT_ID])
-    assert excinfo.value.code == 2
-    assert "--app" in capsys.readouterr().err
+    assert main(["tenant", "reissue", TENANT_ID]) == 2
+    err = capsys.readouterr().err
+    assert "--app" in err
+    assert "Usage:" in err  # errors are followed by the command's help
 
 
 # -- denylist ------------------------------------------------------------------
@@ -722,6 +730,7 @@ def test_denylist_list_empty(monkeypatch, capsys) -> None:
 
 def test_denylist_list_entries(monkeypatch, capsys) -> None:
     _auth(monkeypatch)
+    monkeypatch.setenv("COLUMNS", "160")  # rich tables: keep rows on one line
     key = "sha256:" + "ab" * 32
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -729,7 +738,8 @@ def test_denylist_list_entries(monkeypatch, capsys) -> None:
 
     assert main(["denylist", "list"], transport=httpx.MockTransport(handler)) == 0
     out = capsys.readouterr().out
-    assert f"{key:<72} expires {NOW_ISO}\n" in out
+    assert key in out
+    assert NOW_ISO in out
 
 
 def test_denylist_add_default_expiry(clock, monkeypatch, capsys) -> None:
@@ -822,17 +832,16 @@ def test_connect_error_reports_request_failed(monkeypatch, capsys) -> None:
 
 
 def test_no_args_exits_2(capsys) -> None:
-    with pytest.raises(SystemExit) as excinfo:
-        main([])
-    assert excinfo.value.code == 2
-    assert "usage: relay" in capsys.readouterr().err
+    assert main([]) == 2
+    # no_args_is_help prints the root help before exiting
+    assert "Usage: relay" in capsys.readouterr().out
 
 
 def test_unknown_subcommand_exits_2(capsys) -> None:
-    with pytest.raises(SystemExit) as excinfo:
-        main(["frobnicate"])
-    assert excinfo.value.code == 2
-    assert "invalid choice" in capsys.readouterr().err
+    assert main(["frobnicate"]) == 2
+    err = capsys.readouterr().err
+    assert "No such command 'frobnicate'." in err
+    assert "Usage: relay" in err  # error is followed by help
 
 
 # -- unit: duration parsing and _call error mapping -----------------------------
@@ -897,3 +906,369 @@ def test_call_error_with_non_dict_json_body() -> None:
     with pytest.raises(CliError) as excinfo:
         _call(client, "GET", "/admin/x")
     assert str(excinfo.value) == "GET /admin/x → 500 error"
+
+
+# -- monitor (live dashboard) ---------------------------------------------------
+
+
+def test_monitor_once_renders_frame(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/admin/status":
+            return httpx.Response(200, json=STATUS_JSON)
+        return httpx.Response(
+            200,
+            json={
+                "events": [
+                    {
+                        "ts": FROZEN_TS,
+                        "status": 200,
+                        "code": "accepted",
+                        "path": "/v1/push",
+                        "latencyMs": 9,
+                    }
+                ]
+            },
+        )
+
+    assert main(["monitor", "--once"], transport=httpx.MockTransport(handler)) == 0
+    out = capsys.readouterr().out
+    assert "test-app" in out
+    assert "uptime" in out
+    assert "recent requests" in out
+    assert "/v1/push" in out
+    assert [request.url.path for request in seen] == ["/admin/status", "/admin/logs"]
+    assert dict(seen[1].url.params) == {}
+
+
+def test_monitor_once_errors_flag_filters_events(monkeypatch, capsys) -> None:
+    _auth(monkeypatch)
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path == "/admin/status":
+            return httpx.Response(200, json=STATUS_JSON)
+        return httpx.Response(200, json={"events": []})
+
+    assert main(["monitor", "--once", "--errors"], transport=httpx.MockTransport(handler)) == 0
+    capsys.readouterr()
+    assert dict(seen[1].url.params) == {"errors": "true"}
+
+
+def test_monitor_loop_renders_until_interrupt(monkeypatch) -> None:
+    _auth(monkeypatch)
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path == "/admin/status":
+            return httpx.Response(200, json=STATUS_JSON)
+        return httpx.Response(200, json={"events": []})
+
+    sleeps: list[float] = []
+
+    def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        if len(sleeps) > 1:  # first cycle completes; Ctrl-C on the next one
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli_main.time, "sleep", fake_sleep)
+    assert main(["monitor"], transport=httpx.MockTransport(handler)) == 0
+    assert calls.count("/admin/status") == 2  # initial frame + one refresh
+    assert sleeps == [5.0, 5.0]  # --interval default
+
+
+def test_usage_error_without_context_shows_root_help(monkeypatch, capsys) -> None:
+    real_command = typer_main.get_command(cli_main.app)
+
+    class FailingCommand:
+        def __call__(self, **_kwargs) -> int:
+            raise vendored_click.exceptions.UsageError("kaboom")
+
+        def make_context(self, *args, **kwargs):
+            return real_command.make_context(*args, **kwargs)
+
+    monkeypatch.setattr(typer_main, "get_command", lambda _app: FailingCommand())
+    assert cli_main.main(["doctor"]) == 2
+    err = capsys.readouterr().err
+    assert "error: kaboom" in err
+    assert "Usage: relay" in err  # falls back to the root help
+
+
+# -- app add / remove / list (config.yaml editing, offline) ----------------------
+
+
+TEAM = "TEAMID0001"
+OTHER_KEY = "ZZZZZZ9999"
+
+
+def _mini_config(tmp_path: Path, apps_yaml: str = "") -> Path:
+    config = tmp_path / "config.yaml"
+    body = f"apps:\n{apps_yaml}" if apps_yaml else "apps: []\n"
+    config.write_text("# operator comment\n" + body)
+    return config
+
+
+def _drop_key(config: Path, key_id: str) -> Path:
+    keys = config.parent / "keys"
+    keys.mkdir(exist_ok=True)
+    path = keys / f"AuthKey_{key_id}.p8"
+    path.write_text("dummy")
+    return path
+
+
+def test_app_list_missing_config_uses_default_path(monkeypatch, capsys) -> None:
+    # RELAY_CONFIG unset → DEFAULT_CONFIG (/etc/apns-relay/config.yaml), absent here
+    assert main(["app", "list"]) == 1
+    err = capsys.readouterr().err
+    assert "error: config file not found" in err
+    assert "Usage: relay app list" in err
+
+
+def test_app_list_renders_table(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(
+        tmp_path,
+        apps_yaml="""  - id: alpha
+    bundle_id: com.example.alpha
+    team_id: TEAMID0001
+    key_id: ABCDEF0123
+    environments: [sandbox, production]
+  - id: beta
+    bundle_id: com.example.beta
+    team_id: TEAMID0002
+    key_id: ABCDEF0124
+    environments: production
+  - id: gamma
+    bundle_id: com.example.gamma
+    team_id: TEAMID0003
+    key_id: ABCDEF0125
+""",
+    )
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    monkeypatch.setenv("COLUMNS", "160")
+    assert main(["app", "list"]) == 0
+    out = capsys.readouterr().out
+    assert "alpha" in out and "beta" in out and "gamma" in out
+    assert "ABCDEF0123" in out
+    assert "sandbox, production" in out
+    assert "production" in out  # scalar environments render as-is
+
+
+def test_app_add_noninteractive(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path)
+    _drop_key(config, "ABCDEF0123")
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    assert (
+        main(
+            [
+                "app",
+                "add",
+                "--yes",
+                "--key-id",
+                "ABCDEF0123",
+                "--id",
+                "demo",
+                "--bundle-id",
+                "com.example.demo",
+                "--team-id",
+                TEAM,
+                "--display-name",
+                "Demo App",
+                "--environment",
+                "sandbox",
+                "--kind",
+                "alert",
+                "--kind",
+                "background",
+                "--no-live-activity",
+                "--attest-environment",
+                "development",
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "added demo" in out
+    assert "next: relay doctor" in out
+    text = config.read_text()
+    assert "key_id: ABCDEF0123" in text
+    assert "bundle_id: com.example.demo" in text
+    assert "attest_environment: development" in text
+    assert (tmp_path / "config.yaml.bak").is_file()
+
+
+def test_app_add_yes_requires_flags(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path)
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    assert main(["app", "add", "--yes", "--bundle-id", "com.example.demo"]) == 1
+    err = capsys.readouterr().err
+    assert "--yes requires" in err
+    assert "--team-id" in err and "--key-id" in err
+
+
+def test_app_add_yes_derives_id_from_bundle(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path)
+    _drop_key(config, "ABCDEF0123")
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    assert (
+        main(
+            [
+                "app",
+                "add",
+                "--yes",
+                "--key-id",
+                "ABCDEF0123",
+                "--bundle-id",
+                "com.example.demo",
+                "--team-id",
+                TEAM,
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "added demo" in out  # id derived from the bundle's last component
+    text = config.read_text()
+    assert "id: demo" in text
+    assert "display_name: demo" in text
+    assert "sandbox" in text and "production" in text
+
+
+def test_app_add_interactive_picks_key(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path)
+    _drop_key(config, "ABCDEF0123")
+    _drop_key(config, OTHER_KEY)
+    (config.parent / "keys" / "notakey.p8").write_text("")  # ignored by the scanner
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    monkeypatch.setenv("COLUMNS", "160")
+    monkeypatch.setattr(sys, "stdin", io.StringIO("com.example.demo\nTEAMID0001\n1\n\ny\n"))
+    assert main(["app", "add"]) == 0
+    out = capsys.readouterr().out
+    assert "Available keys:" in out
+    assert "1. AuthKey_ABCDEF0123.p8" in out
+    assert f"2. AuthKey_{OTHER_KEY}.p8" in out
+    assert "added demo" in out
+    assert "key_id: ABCDEF0123" in config.read_text()
+
+
+def test_app_add_invalid_key_number(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path)
+    _drop_key(config, "ABCDEF0123")
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    monkeypatch.setattr(sys, "stdin", io.StringIO("9\n"))
+    assert main(["app", "add", "--bundle-id", "com.example.demo", "--team-id", TEAM]) == 1
+    assert "expected a key number 1..1" in capsys.readouterr().err
+
+
+def test_app_add_no_keys_errors(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path)  # no keys/ directory
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    assert main(["app", "add", "--bundle-id", "com.example.demo", "--team-id", TEAM]) == 1
+    assert "no AuthKey_<KEYID>.p8 found" in capsys.readouterr().err
+
+
+def test_app_add_declined_confirmation(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path)
+    _drop_key(config, "ABCDEF0123")
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    monkeypatch.setattr(sys, "stdin", io.StringIO("n\n"))
+    assert (
+        main(
+            [
+                "app",
+                "add",
+                "--key-id",
+                "ABCDEF0123",
+                "--id",
+                "demo",
+                "--bundle-id",
+                "com.example.demo",
+                "--team-id",
+                TEAM,
+            ]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert "added" not in out
+    assert config.read_text() == "# operator comment\napps: []\n"  # unchanged
+
+
+def test_app_add_eof_aborts(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path)
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))  # EOF at the first prompt
+    assert main(["app", "add"]) == 1
+    assert "aborted" in capsys.readouterr().err
+
+
+def test_app_add_write_error_reports_oserror(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path)
+    _drop_key(config, "ABCDEF0123")
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+
+    def boom(_src, _dst) -> None:
+        raise OSError("Read-only file system")  # e.g. the container's :ro config mount
+
+    monkeypatch.setattr(cli_main.configedit.shutil, "copy2", boom)
+    assert (
+        main(
+            [
+                "app",
+                "add",
+                "--yes",
+                "--key-id",
+                "ABCDEF0123",
+                "--id",
+                "demo",
+                "--bundle-id",
+                "com.example.demo",
+                "--team-id",
+                TEAM,
+            ]
+        )
+        == 1
+    )
+    err = capsys.readouterr().err
+    assert "error: Read-only file system" in err
+    assert "Usage: relay app add" in err
+
+
+def test_app_remove_declined_confirmation(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path, apps_yaml="  - id: alpha\n  - id: beta\n")
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    monkeypatch.setattr(sys, "stdin", io.StringIO("n\n"))
+    assert main(["app", "remove", "alpha"]) == 0
+    out = capsys.readouterr().out
+    assert "removed" not in out
+    text = config.read_text()
+    assert "alpha" in text and "beta" in text  # unchanged
+
+
+def test_app_remove_yes(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path, apps_yaml="  - id: alpha\n  - id: beta\n")
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    assert main(["app", "remove", "alpha", "--yes"]) == 0
+    out = capsys.readouterr().out
+    assert "removed alpha" in out
+    text = config.read_text()
+    assert "alpha" not in text and "beta" in text
+    assert (tmp_path / "config.yaml.bak").is_file()
+
+
+def test_app_remove_unknown_id_errors(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path, apps_yaml="  - id: alpha\n  - id: beta\n")
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    assert main(["app", "remove", "ghost", "--yes"]) == 1
+    assert "no app with id 'ghost'" in capsys.readouterr().err
+
+
+def test_app_remove_last_app_refused(tmp_path, monkeypatch, capsys) -> None:
+    config = _mini_config(tmp_path, apps_yaml="  - id: alpha\n")
+    monkeypatch.setenv("RELAY_CONFIG", str(config))
+    assert main(["app", "remove", "alpha", "--yes"]) == 1
+    assert "refusing to remove" in capsys.readouterr().err

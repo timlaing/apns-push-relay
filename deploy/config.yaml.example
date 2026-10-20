@@ -3,8 +3,9 @@
 # container; the loader (src/apns_relay/config.py) rejects unknown keys, so
 # this file must match its schema exactly.
 #
-# Relative paths (key_file, grant_issuer_key) resolve against the directory
+# Relative paths (grant_issuer_key, …) resolve against the directory
 # holding this file — /etc/apns-relay/ in the container, ./ on the host.
+# App key files are always looked up at keys/AuthKey_<key_id>.p8 here too.
 
 server:
   api_domain: api.push.example.org # THIS instance's API domain — set by the
@@ -37,13 +38,14 @@ storage:
   database: /var/lib/apns-relay/relay.db # SQLite WAL — the only backup target
 
 apps:
-  # One entry per APNs app key. `key_id` is derived from the
-  # AuthKey_<ID>.p8 filename when omitted; the APNs topic is the bundle_id.
+  # One entry per APNs app key. `key_id` is the 10-char id from Apple's
+  # AuthKey_<KEYID>.p8 filename; the key file is looked up at
+  # keys/AuthKey_<key_id>.p8. The APNs topic is the bundle_id.
   - id: my-app
     display_name: My App # shown in enrollment consent receipts
-    bundle_id: com.example.myapp # App ID prefix + bundle identifier
+    bundle_id: com.example.myapp # bundle identifier only (no App ID prefix)
     team_id: XXXXXXXXXX # Apple Team ID, from the developer account
-    key_file: keys/my-app/AuthKey_XXXXXXXXXX.p8
+    key_id: XXXXXXXXXX # 10-char APNs key id (AuthKey_XXXXXXXXXX.p8)
     environments: [sandbox, production]
     kinds: [alert, background, liveActivity]
     live_activity: true

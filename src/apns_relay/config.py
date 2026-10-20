@@ -126,8 +126,11 @@ class RegistrationConfig:
 class AppKeyConfig:
     """One APNs app: an app-specific ``.p8`` key and its policy.
 
-    ``team_id`` is required per key (multi-team support). ``key_id`` may be
-    omitted and is derived from the ``AuthKey_<ID>.p8`` filename.
+    ``key_id`` is required in the config (the 10-char id from Apple's
+    ``AuthKey_<KEYID>.p8`` filename); ``key_file`` is derived from it at
+    ``keys/AuthKey_<key_id>.p8`` next to the config file. ``team_id`` is
+    required per key (multi-team support); ``bundle_id`` is the bundle
+    identifier only — the APNs topic is the bundle_id.
     """
 
     id: str
@@ -155,17 +158,6 @@ class AppKeyConfig:
         return f"{self.bundle_id}.push-type.liveactivity"
 
 
-def _derive_key_id(key_file: Path) -> str:
-    """Key ID is not inside the ``.p8``; Apple encodes it in the filename."""
-    name = key_file.name
-    match = re.match(r"^AuthKey_([A-Z0-9]{10})\.p8$", name)
-    if match:
-        return match.group(1)
-    raise ConfigError(
-        f"key_file {name!r}: filename must be AuthKey_<KEYID>.p8 or set key_id explicitly"
-    )
-
-
 def _parse_app(raw: dict[str, Any], base: Path) -> AppKeyConfig:
     if not isinstance(raw, dict):
         raise ConfigError("apps[?]: expected mapping")
@@ -183,23 +175,16 @@ def _parse_app(raw: dict[str, Any], base: Path) -> AppKeyConfig:
     if not TEAM_ID_RE.match(team_id):
         raise ConfigError(f"{ctx}.team_id: expected 10 alphanumeric chars, got {team_id!r}")
 
-    key_file_raw = _expect(raw, "key_file", str, ctx)
-    key_file = Path(key_file_raw)
-    if not key_file.is_absolute():
-        key_file = base / key_file
-
-    key_id_raw = raw.get("key_id")
-    if key_id_raw is None:
-        key_id = _derive_key_id(key_file)
-    elif isinstance(key_id_raw, str) and KEY_ID_RE.match(key_id_raw):
-        key_id = key_id_raw
-        # Boot validation: explicit key_id must agree with an AuthKey_ filename
-        # when the filename encodes one (PLAN §4 key rotation).
-        match = re.match(r"^AuthKey_([A-Z0-9]{10})\.p8$", key_file.name)
-        if match and match.group(1) != key_id:
-            raise ConfigError(f"{ctx}: key_id {key_id} does not match filename {key_file.name!r}")
-    else:
-        raise ConfigError(f"{ctx}.key_id: expected 10 alphanumeric chars, got {key_id_raw!r}")
+    if "key_file" in raw:
+        raise ConfigError(
+            f"{ctx}: 'key_file' was removed — set 'key_id' (the 10-char id from"
+            " the AuthKey_<KEYID>.p8 filename); the file is looked up at"
+            " keys/AuthKey_<key_id>.p8 next to the config file"
+        )
+    key_id = _expect(raw, "key_id", str, ctx)
+    if not KEY_ID_RE.match(key_id):
+        raise ConfigError(f"{ctx}.key_id: expected 10 alphanumeric chars, got {key_id!r}")
+    key_file = base / "keys" / f"AuthKey_{key_id}.p8"
 
     display_name = raw.get("display_name", app_id)
     if not isinstance(display_name, str) or not (1 <= len(display_name) <= 64):

@@ -30,7 +30,7 @@ def valid_app() -> dict[str, Any]:
         "display_name": "Test App",
         "bundle_id": "com.example.testapp",
         "team_id": TEAM_ID,
-        "key_file": f"keys/AuthKey_{KEY_ID}.p8",
+        "key_id": KEY_ID,
         "environments": ["sandbox", "production"],
         "kinds": ["alert", "background", "liveActivity"],
         "live_activity": True,
@@ -191,12 +191,10 @@ def test_top_level_not_mapping(tmp_path: Path, raw: str) -> None:
         (set_app("team_id", "SHORT"), "team_id: expected 10 alphanumeric"),
         (set_app("team_id", 1234567890), "team_id: expected str"),
         (drop_app("team_id"), "missing required key 'team_id'"),
-        (drop_app("key_file"), "missing required key 'key_file'"),
-        (set_app("key_file", 5), "key_file: expected str"),
-        (set_app("key_file", "keys/notanauthkey.p8"), "filename must be AuthKey_"),
-        (set_app("key_id", "WRONGID000"), "does not match filename"),
+        (drop_app("key_id"), "missing required key 'key_id'"),
         (set_app("key_id", "short"), "key_id: expected 10 alphanumeric"),
-        (set_app("key_id", 1234567890), "key_id: expected 10 alphanumeric"),
+        (set_app("key_id", 1234567890), "key_id: expected str"),
+        (set_app("key_file", "keys/rotated.p8"), "'key_file' was removed"),
         (set_app("display_name", 5), "display_name: expected string of 1..64 chars"),
         (set_app("display_name", ""), "display_name: expected string of 1..64 chars"),
         (set_app("display_name", "x" * 65), "display_name: expected string of 1..64 chars"),
@@ -313,13 +311,12 @@ def test_absolute_paths_kept(tmp_path: Path) -> None:
     raw["enrollment"]["grant_issuer_key"] = "/etc/relay/issuer.pem"
     raw["enrollment"]["attest_root_certs"] = {"production": "/abs/prod-root.pem"}
     raw["storage"]["database"] = "/var/lib/other/relay.db"
-    raw["apps"][0]["key_file"] = f"/keys/AuthKey_{KEY_ID}.p8"
     config = load(tmp_path, raw)
 
     assert config.enrollment.grant_issuer_key == Path("/etc/relay/issuer.pem")
     assert config.enrollment.root_for("production") == Path("/abs/prod-root.pem")
     assert config.database == Path("/var/lib/other/relay.db")
-    assert config.app("test-app").key_file == Path(f"/keys/AuthKey_{KEY_ID}.p8")
+    assert config.app("test-app").key_file == tmp_path / f"keys/AuthKey_{KEY_ID}.p8"
 
 
 def test_relative_root_resolved_and_root_for(tmp_path: Path) -> None:
@@ -359,22 +356,17 @@ def test_defaults_when_sections_omitted(tmp_path: Path) -> None:
 # -- app key handling ---------------------------------------------------------
 
 
-def test_key_id_derived_from_filename(tmp_path: Path) -> None:
+def test_key_id_from_config_names_derived_file(tmp_path: Path) -> None:
     config = load(tmp_path, valid_config())
     assert config.app("test-app").key_id == KEY_ID
-
-
-def test_explicit_key_id_with_non_authkey_filename(tmp_path: Path) -> None:
-    raw = valid_config()
-    raw["apps"][0]["key_file"] = "keys/rotated-key.p8"
-    raw["apps"][0]["key_id"] = KEY_ID
-    config = load(tmp_path, raw)
-    assert config.app("test-app").key_id == KEY_ID
-
-
-def test_absolute_key_file_keeps_derived_id(tmp_path: Path) -> None:
-    config = load(tmp_path, valid_config())
     assert config.app("test-app").key_file == tmp_path / f"keys/AuthKey_{KEY_ID}.p8"
+
+
+def test_key_file_rejected_with_migration_hint(tmp_path: Path) -> None:
+    raw = valid_config()
+    raw["apps"][0]["key_file"] = f"keys/AuthKey_{KEY_ID}.p8"
+    with pytest.raises(ConfigError, match="'key_file' was removed"):
+        load(tmp_path, raw)
 
 
 # -- enabled apps, app(), topics ----------------------------------------------

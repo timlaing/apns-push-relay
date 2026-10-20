@@ -53,7 +53,7 @@ cd apns-push-relay
 cp deploy/config.yaml.example deploy/config.yaml   # edit: apps, domains
 cp deploy/.env.example deploy/.env                # set API_DOMAIN, RELAY_ADMIN_TOKEN,
                                                   # RELAY_MASTER_SECRET
-# put your .p8 keys somewhere referenced by config.yaml (never committed)
+# drop .p8 keys at deploy/keys/AuthKey_<KEYID>.p8; config sets key_id (never committed)
 docker compose -f deploy/docker-compose.yml pull               # published image; skip to build from source
 docker compose -f deploy/docker-compose.yml up -d
 ```
@@ -69,10 +69,12 @@ The stack is nginx + certbot (automatic TLS renewal) + the relay, with
 ```sh
 relay doctor                  # offline config/keys/secrets validation
 relay status                  # tenants, quota config, metric snapshot
+relay monitor --interval 5    # live dashboard (status, quotas, recent requests)
 relay logs --errors --since 1h
 relay tenant list|verify|revoke|reissue
 relay denylist add <jti|sha256:…> --expires 24h
 relay metrics                 # Prometheus text
+relay app list|add|remove     # edit apps in config.yaml (offline, keeps comments)
 ```
 
 ## Development

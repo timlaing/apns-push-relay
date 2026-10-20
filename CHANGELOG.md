@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Added
+
+- **`relay monitor`**: a live rich dashboard — health, apps, quotas, the
+  metric snapshot and recent requests. `--errors` tails failures only;
+  `--once` renders a single frame for scripts.
+- **`relay app add` / `app remove` / `app list`**: manage the `apps:`
+  section of `config.yaml` from the CLI. `add` interactively picks from
+  the `keys/AuthKey_*.p8` files present (fully scriptable with flags +
+  `--yes`); edits preserve comments and write a `config.yaml.bak`
+  backup before each change.
+
+### Changed
+
+- **CLI rewritten on typer + rich**: sub-command help, table renderings
+  (status, tenants, denylist) and coloured doctor check lines; every
+  error now prints the failing command's help before exiting.
+- **App keys are configured by `key_id`**: the `apps[].key_file` entry
+  is gone — set `key_id` (the 10-char id from Apple's
+  `AuthKey_<KEYID>.p8` filename) and the file is looked up at
+  `keys/AuthKey_<key_id>.p8` next to the config file (flat, no
+  subdirectories). Passing `key_file` fails with a migration hint.
+- `bundle_id` clarified in the example config and docs: it is the bundle
+  identifier only — the APNs topic _is_ the bundle id (no App ID
+  prefix).
+
 ## [0.2.0] - 2026-10-20
 
 ### Added

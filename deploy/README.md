@@ -20,9 +20,9 @@ relay (FastAPI/uvicorn, internal network only). Full walkthrough:
 cd deploy
 cp .env.example .env               # fill in: tokens, email, domains
 cp config.yaml.example config.yaml # edit: apps, domains
-mkdir -p keys/my-app
-# drop the .p8 key(s) in, e.g. keys/my-app/AuthKey_XXXXXXXXXX.p8
-# chmod 600 keys/my-app/*.p8
+mkdir -p keys
+# drop the .p8 key(s) in, e.g. keys/AuthKey_XXXXXXXXXX.p8 (key_id = XXXXXXXXXX)
+# chmod 600 keys/*.p8
 openssl genpkey -algorithm ed25519 -out keys/issuer.pem
 docker compose pull # published image (ghcr.io); skip this line to build from source
 docker compose up -d
@@ -43,8 +43,11 @@ Check status: `docker compose ps`, `docker compose logs -f certbot nginx`.
   container lifecycle.
 - **CLI**: run inside the container —
   `docker compose exec relay relay status` (also `relay doctor`,
-  `relay app list`, `relay tenant list`, …).
+  `relay monitor`, `relay app list`, `relay tenant list`, …).
 - **`/admin` is never proxied** through nginx (internal network only); reach
   the admin API via the CLI above (`docker compose exec`).
-- **Onboard an app**: drop its `.p8` in `keys/`, add an `apps:` entry to
-  `config.yaml`, `docker compose restart relay`.
+- **Onboard an app**: drop its `.p8` in `keys/`, then either add the
+  `apps:` entry by hand or run `relay app add` where the config is
+  writable (the container mounts it read-only — from a checkout:
+  `RELAY_CONFIG=$PWD/config.yaml uv run relay app add` picks a key
+  interactively), and `docker compose restart relay`.

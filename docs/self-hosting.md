@@ -75,7 +75,7 @@ apps:
     display_name: My App
     bundle_id: com.example.myapp
     team_id: ABCDEFGHIJ
-    key_file: keys/AuthKey_<KEYID>.p8
+    key_id: XXXXXXXXXX # 10-char id from the AuthKey_<KEYID>.p8 filename
     environments: [production]
     kinds: [alert, background, liveActivity]
     live_activity: true
@@ -92,8 +92,11 @@ mkdir -p deploy/keys
 openssl genpkey -algorithm ed25519 -out deploy/keys/issuer.pem
 ```
 
-Place your `.p8` files **outside the repo** (the gitignore excludes
-`keys/`, `*.p8`, `config.yaml`, `.env` and the database).
+Name every `.p8` `AuthKey_<KEYID>.p8` and drop it in `deploy/keys/`; set
+that app's `key_id` to the 10-character id — the relay looks the file up
+at `keys/AuthKey_<key_id>.p8` next to the config file. Keep it all
+**outside the repo** (the gitignore excludes `keys/`, `*.p8`,
+`config.yaml`, `.env` and the database).
 
 ## 3. Validate before starting
 
@@ -142,6 +145,7 @@ limits — the compose file documents the switch.
 
 ```sh
 docker compose exec relay relay status              # health + quota + metrics
+docker compose exec relay relay monitor --interval 5   # live dashboard (status, quotas, recent requests)
 docker compose exec relay relay logs --errors --since 1h
 docker compose exec relay relay tenant list
 docker compose exec relay relay tenant revoke hooks.example.com   # kill switch
@@ -151,6 +155,13 @@ docker compose exec relay relay metrics             # Prometheus text
 
 - The admin API listens on the internal network only: **nginx returns 404
   for `/admin`**.
+- **Adding or removing apps**: `relay app add` (interactively picks from
+  `keys/AuthKey_*.p8`) and `relay app remove` edit `config.yaml` offline,
+  preserving comments and writing a `.bak`. The compose config mount is
+  read-only, so run them from a checkout —
+  `RELAY_CONFIG=deploy/config.yaml uv run relay app add` — then
+  `docker compose -f deploy/docker-compose.yml restart relay` (doctor
+  re-runs at boot).
 - **Interactive API docs**: set `swagger_ui: true` under `server:` in
   `config.yaml` to serve Swagger UI at `/docs`, ReDoc at `/redoc` and the
   schema at `/openapi.json` on the API domain (off by default — the

@@ -23,6 +23,10 @@ keys/
 relay.db
 relay.db-*
 config.yaml
+config.yaml.bak
+
+# macOS
+.DS_Store
 
 # Build/site output
 site/
