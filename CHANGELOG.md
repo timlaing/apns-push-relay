@@ -7,30 +7,7 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
-### Added
-
-- **Credential rotation: `POST /v1/rotate`.** A tenant replaces its token
-  and Ed25519 signing key in one round trip, authorized by a request signed
-  under the current binding (proof of possession). Grants bound to the old
-  key stop verifying; paired devices re-enroll with the new key (enrollment
-  spec §2.7, v1.2 amendment).
-- **Interactive API docs (opt-in):** `server.swagger_ui: true` serves
-  Swagger UI (`/docs`), ReDoc (`/redoc`) and the OpenAPI schema
-  (`/openapi.json`) on the API host; off by default, and `/admin` is
-  never exposed either way.
-- **Container image:** self-hosting pulls the published GHCR image
-  (`ghcr.io/timlaing/apns-push-relay`, one tag per release); building
-  from source remains the compose fallback (`up --build`).
-
-### Fixed
-
-- **Docs rendering:** admonition bodies were not indented on four pages
-  (`limits-and-abuse`, `status`, `api/openapi`, `self-hosting` ×2), so
-  they rendered as empty title boxes with the text orphaned below; the
-  enrollment spec's Status/Version/Applies-to/License header lines merged
-  into a single run-on paragraph.
-
-## [0.1.0] - 2026-10-19
+## [0.1.0] - 2026-10-20
 
 ### Added
 
@@ -53,6 +30,26 @@ and this project adheres to [Semantic Versioning].
   OpenAPI schema and a reference Python client.
 - **Quality gates**: test suite with CI enforcing > 90% line **and** 100%
   branch coverage on Python 3.12–3.14, CodeQL scanning and Dependabot.
+- **Credential rotation: `POST /v1/rotate`.** A tenant replaces its token
+  and Ed25519 signing key in one round trip, authorized by a request signed
+  under the current binding (proof of possession). Grants bound to the old
+  key stop verifying; paired devices re-enroll with the new key (enrollment
+  spec §2.7, v1.2 amendment).
+- **Interactive API docs (opt-in):** `server.swagger_ui: true` serves
+  Swagger UI (`/docs`), ReDoc (`/redoc`) and the OpenAPI schema
+  (`/openapi.json`) on the API host; off by default, and `/admin` is
+  never exposed either way.
+- **Container image:** self-hosting pulls the published GHCR image
+  (`ghcr.io/timlaing/apns-push-relay`, one tag per release); building
+  from source remains the compose fallback (`up --build`).
+
+### Fixed
+
+- **Docs rendering:** admonition bodies were not indented on four pages
+  (`limits-and-abuse`, `status`, `api/openapi`, `self-hosting` ×2), so
+  they rendered as empty title boxes with the text orphaned below; the
+  enrollment spec's Status/Version/Applies-to/License header lines merged
+  into a single run-on paragraph.
 
 [Unreleased]: https://github.com/timlaing/apns-push-relay/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.1.0
