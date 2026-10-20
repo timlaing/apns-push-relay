@@ -24,6 +24,9 @@ def _yaml() -> YAML:
     yaml = YAML()  # round-trip mode: comments, order and style survive
     yaml.indent(mapping=2, sequence=4, offset=2)
     yaml.preserve_quotes = True
+    # Never reflow the operator's long lines (flow mappings, URLs) —
+    # the emitter would otherwise wrap anything past its default width.
+    yaml.width = 4096
     return yaml
 
 

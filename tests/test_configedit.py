@@ -138,6 +138,19 @@ def test_add_app_round_trip_preserves_comments(tmp_path: Path) -> None:
     assert (tmp_path / "config.yaml.bak").is_file()
 
 
+def test_add_app_round_trip_keeps_long_lines_unwrapped(tmp_path: Path) -> None:
+    """The emitter must not reflow the operator's long lines (flow mappings
+    such as caps:) when it rewrites the file."""
+    caps_line = (
+        "    caps: { title: 64, subtitle: 64, body: 200, sealed: 1024,"
+        " category: 32, background: 512 }"
+    )
+    config = _config(tmp_path, apps_yaml=f"  - id: alpha\n{caps_line}\n")
+    _key(tmp_path)
+    configedit.add_app(config, dict(VALID_ENTRY))
+    assert caps_line in config.read_text()
+
+
 def test_add_app_rejects_duplicate_id(tmp_path: Path) -> None:
     config = _config(tmp_path, apps_yaml="  - id: demo\n")
     _key(tmp_path)
