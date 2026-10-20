@@ -28,6 +28,7 @@ from rich import box
 from rich.console import Console, Group
 from rich.live import Live
 from rich.markup import escape
+from rich.panel import Panel
 from rich.table import Table
 from typer import _click as _vendored_click  # typer >= 0.27 vendors click
 
@@ -46,6 +47,15 @@ _DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
 out = Console(soft_wrap=True)  # line-oriented output: never re-wrap long paths
 err = Console(stderr=True, soft_wrap=True)
+
+
+def _section(title: str, renderable: Any, *, border_style: str = "none") -> Panel:
+    """A help-style section: rounded panel with a left-aligned legend title
+    (``╭─ Options ──────╮``, matching typer's CLI help panels)."""
+    return Panel(
+        renderable, title=title, title_align="left", box=box.ROUNDED, border_style=border_style
+    )
+
 
 # Test/injection seam: when set, used instead of the real network.
 _TRANSPORT: httpx.BaseTransport | None = None
@@ -92,11 +102,19 @@ def _guard(fn: Any) -> Any:
         try:
             return fn(ctx, *args, **kwargs)
         except (CliError, ConfigError, OSError) as exc:  # OSError: file writes, ro mounts
-            err.print(f"[bold red]error:[/] {exc}")
+            err.print(
+                _section("Error", f"[bold red]error:[/] {escape(str(exc))}", border_style="red")
+            )
             _print_help(ctx)
             raise typer.Exit(1) from None
         except httpx.HTTPError as exc:
-            err.print(f"[bold red]error:[/] request failed: {exc}")
+            err.print(
+                _section(
+                    "Error",
+                    f"[bold red]error:[/] request failed: {escape(str(exc))}",
+                    border_style="red",
+                )
+            )
             _print_help(ctx)
             raise typer.Exit(1) from None
 
@@ -368,7 +386,7 @@ def fetch_roots(
 
 
 def _status_view(data: dict[str, Any]) -> Group:
-    head = Table(box=box.ROUNDED)
+    head = Table(box=box.SIMPLE)
     head.add_column("field", style="bold cyan")
     head.add_column("value")
     head.add_row("status", str(data["status"]))
@@ -376,7 +394,7 @@ def _status_view(data: dict[str, Any]) -> Group:
     head.add_row("tenants", str(data["tenants"]))
     head.add_row("denylisted", str(data["denylisted"]))
 
-    apps = Table(box=box.ROUNDED, title="apps")
+    apps = Table(box=box.SIMPLE)
     apps.add_column("id")
     apps.add_column("state")
     apps.add_column("key")
@@ -400,7 +418,7 @@ def _status_view(data: dict[str, Any]) -> Group:
             f"{ttl['min']}..{ttl['max']}s default {ttl['default']}s",
         )
 
-    metrics = Table(box=box.ROUNDED, title="metrics")
+    metrics = Table(box=box.SIMPLE)
     metrics.add_column("metric")
     metrics.add_column("labels")
     metrics.add_column("count", justify="right")
@@ -409,7 +427,11 @@ def _status_view(data: dict[str, Any]) -> Group:
             f"{label or 'total'}={count}" for label, count in sorted(labels.items())
         )
         metrics.add_row(name, rendered, str(sum(labels.values())))
-    return Group(head, apps, metrics)
+    return Group(
+        _section("status", head),
+        _section("apps", apps),
+        _section("metrics", metrics),
+    )
 
 
 @app.command()
@@ -468,7 +490,7 @@ def _monitor_frame(errors: bool) -> Group:
         status_data = _call(client, "GET", "/admin/status")
         logs_data = _call(client, "GET", "/admin/logs", params=params)
 
-    recent = Table(box=box.ROUNDED, title="recent requests")
+    recent = Table(box=box.SIMPLE)
     recent.add_column("ts")
     recent.add_column("status", justify="right")
     recent.add_column("code")
@@ -482,7 +504,7 @@ def _monitor_frame(errors: bool) -> Group:
             str(event["path"]),
             str(event["latencyMs"]),
         )
-    return Group(_status_view(status_data), recent)
+    return Group(_status_view(status_data), _section("recent requests", recent))
 
 
 @app.command()
@@ -523,16 +545,16 @@ def tenant_list(
         )
     rows = data["tenants"]
     if not rows:
-        out.print("(no tenants)")
+        out.print(_section("tenants", "(no tenants)"))
         return
-    table = Table(box=box.ROUNDED)
+    table = Table(box=box.SIMPLE)
     table.add_column("tenant")
     table.add_column("app")
     table.add_column("registered")
     table.add_column("last seen")
     for row in rows:
         table.add_row(row["tenant"], row["app"], _iso(row["registeredAt"]), _iso(row["lastSeen"]))
-    out.print(table)
+    out.print(_section("tenants", table))
 
 
 @tenant_app.command("verify")
@@ -605,14 +627,14 @@ def denylist_list(ctx: typer.Context) -> None:
         data = _call(client, "GET", "/admin/denylist")
     entries = data["entries"]
     if not entries:
-        out.print("(denylist empty)")
+        out.print(_section("denylist", "(denylist empty)"))
         return
-    table = Table(box=box.ROUNDED)
+    table = Table(box=box.SIMPLE)
     table.add_column("key")
     table.add_column("expires")
     for entry in entries:
         table.add_row(entry["key"], _iso(entry["expires"]))
-    out.print(table)
+    out.print(_section("denylist", table))
 
 
 @denylist_app.command("add")
@@ -639,7 +661,7 @@ def app_list(ctx: typer.Context, config: Path | None = _CONFIG_OPT) -> None:
     """List apps from config.yaml (offline)."""
     del ctx
     entries = configedit.list_apps(_config_path(config))
-    table = Table(box=box.ROUNDED)
+    table = Table(box=box.SIMPLE)
     for column in ("id", "bundle_id", "team_id", "key_id", "environments"):
         table.add_column(column)
     for entry in entries:
@@ -651,7 +673,7 @@ def app_list(ctx: typer.Context, config: Path | None = _CONFIG_OPT) -> None:
             str(entry.get("key_id", "")),
             ", ".join(environments) if isinstance(environments, list) else str(environments),
         )
-    out.print(table)
+    out.print(_section("apps", table))
 
 
 @config_app.command("add")

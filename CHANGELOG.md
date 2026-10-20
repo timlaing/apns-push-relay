@@ -32,6 +32,16 @@ and this project adheres to [Semantic Versioning].
 
 ### Changed
 
+- **The image tracks `latest`**: compose's relay service now uses
+  `ghcr.io/timlaing/apns-push-relay:latest` — the `RELAY_TAG`
+  interpolation is gone (version-pinned tags are invisible to image
+  updaters such as Watchtower and What's Up Docker). GHCR still
+  publishes per-version and sha tags for pinning.
+- **CLI output uses help-style legend panels**: status/apps/metrics,
+  recent requests and the app/tenant/denylist tables (plus their empty
+  states) render inside `╭─ title ──────╮` rounded panels, matching
+  typer's CLI help; failures print in a red `╭─ Error ─╮` panel.
+  Section tables use the light grid.
 - **CLI rewritten on typer + rich**: sub-command help, table renderings
   (status, tenants, denylist) and coloured doctor check lines; every
   error now prints the failing command's help before exiting.

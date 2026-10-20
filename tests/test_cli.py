@@ -597,7 +597,8 @@ def test_tenant_list_empty(monkeypatch, capsys) -> None:
         return httpx.Response(200, json={"tenants": []})
 
     assert main(["tenant", "list"], transport=httpx.MockTransport(handler)) == 0
-    assert capsys.readouterr().out == "(no tenants)\n"
+    out = capsys.readouterr().out
+    assert "╭─ tenants ─" in out and "(no tenants)" in out
     assert seen == [{}]
 
 
@@ -725,7 +726,8 @@ def test_denylist_list_empty(monkeypatch, capsys) -> None:
         return httpx.Response(200, json={"entries": []})
 
     assert main(["denylist", "list"], transport=httpx.MockTransport(handler)) == 0
-    assert capsys.readouterr().out == "(denylist empty)\n"
+    out = capsys.readouterr().out
+    assert "╭─ denylist ─" in out and "(denylist empty)" in out
 
 
 def test_denylist_list_entries(monkeypatch, capsys) -> None:
