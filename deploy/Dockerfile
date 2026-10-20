@@ -12,7 +12,8 @@ ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     UV_NO_CACHE=1 \
     RELAY_CONFIG=/etc/apns-relay/config.yaml \
-    RELAY_DATA_DIR=/var/lib/apns-relay
+    RELAY_DATA_DIR=/var/lib/apns-relay \
+    DOCS_DOMAIN=timlaing.github.io/apns-push-relay
 
 WORKDIR /app
 COPY pyproject.toml README.md uv.lock ./

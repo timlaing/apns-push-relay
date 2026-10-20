@@ -69,6 +69,19 @@ def test_docs_live_on_the_public_listener_only(env) -> None:
         assert client.get("/docs").status_code == 404
 
 
+def test_api_root_is_a_docs_pointer_on_public_only(env, monkeypatch) -> None:
+    admin, public = _split(env)
+    with TestClient(public) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert response.json() == {"docs": "https://timlaing.github.io/apns-push-relay/"}
+        # DOCS_DOMAIN is read per request — the image bakes it, .env needn't
+        monkeypatch.setenv("DOCS_DOMAIN", "docs.example.org")
+        assert client.get("/").json() == {"docs": "https://docs.example.org/"}
+    with TestClient(admin) as client:
+        assert client.get("/").status_code == 404
+
+
 def test_servers_bind_admin_8000_and_public_8001() -> None:
     servers = serve._servers(_stub, _stub)  # type: ignore[arg-type]
     assert (

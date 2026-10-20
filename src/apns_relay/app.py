@@ -37,6 +37,10 @@ from .signing import sha256hex
 from .store import Store
 
 DEFAULT_CONFIG = "/etc/apns-relay/config.yaml"
+# The API root (/) answers with a JSON pointer to the docs site; the docs
+# land on this repo's GitHub Pages project URL. The image bakes
+# DOCS_DOMAIN over this default for operators hosting docs elsewhere.
+DEFAULT_DOCS_DOMAIN = "timlaing.github.io/apns-push-relay"
 
 
 def load_issuer_key(path: Path) -> Ed25519PrivateKey:
@@ -220,6 +224,14 @@ def _assemble(state: AppState, *, public: bool, admin: bool) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.relay = state
+
+    if public:
+
+        @app.get("/", include_in_schema=False)
+        async def docs_pointer() -> dict[str, str]:
+            """API root: JSON pointer to the docs site (landing on GitHub Pages)."""
+            domain = os.environ.get("DOCS_DOMAIN", DEFAULT_DOCS_DOMAIN)
+            return {"docs": f"https://{domain}/"}
 
     @app.exception_handler(ApiError)
     async def _api_error(request: Request, exc: ApiError) -> JSONResponse:

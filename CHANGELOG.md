@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning].
   a TLS-terminating reverse proxy — instead of redirecting them. The
   default keeps port 80 redirecting unconditionally, and `/admin` 404s
   at the edge on both ports.
+- **The API root answers with the docs pointer**: `GET /` on the public
+  listener returns `{"docs": "…"}` (previously static nginx JSON). The
+  docs host is the image env `DOCS_DOMAIN` (default: the project's
+  GitHub Pages URL), so the `.env` knob is gone.
 - **In-container config management**: compose mounts the deploy
   directory read-write (keys stay read-only), so `relay app add` /
   `app remove` run inside the container

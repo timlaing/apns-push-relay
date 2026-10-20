@@ -24,7 +24,6 @@ services:
     environment:
       # Read by envsubst when the template is rendered at container start.
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
-      DOCS_DOMAIN: ${DOCS_DOMAIN:?set DOCS_DOMAIN in .env}
       # 1 (default): port 80 always redirects to HTTPS. Set FORCE_HTTPS=0 in
       # .env when running behind a TLS-terminating proxy — requests with
       # X-Forwarded-Proto: https are then served on port 80 as well.

@@ -108,6 +108,14 @@ def test_v1_proxies_to_relay_internal_port() -> None:
     assert "proxy_pass http://relay:8001;" in v1
 
 
+def test_api_root_proxies_to_the_relay() -> None:
+    """/ is answered by the relay (a JSON pointer to the docs site); the
+    docs domain is baked into the relay image, not rendered by nginx."""
+    block = _location_block(_nginx(), "/ {")
+    assert "proxy_pass http://relay:8001;" in block
+    assert "DOCS_DOMAIN" not in _nginx()
+
+
 def test_acme_challenge_location_present() -> None:
     block = _location_block(_nginx(), "/.well-known/acme-challenge/ {")
     assert "root /var/www/certbot;" in block
@@ -197,6 +205,13 @@ def test_dockerfile_entrypoint_and_command() -> None:
     assert cmd == 'CMD ["python", "-m", "apns_relay.serve"]'
     expose = next(line for line in dockerfile.splitlines() if line.startswith("EXPOSE"))
     assert expose == "EXPOSE 8000 8001"
+
+
+def test_docs_domain_baked_into_the_image() -> None:
+    """The API root's docs pointer comes from the image env, with the
+    project's GitHub Pages URL as the default."""
+    dockerfile = (DEPLOY / "Dockerfile").read_text()
+    assert "DOCS_DOMAIN=timlaing.github.io/apns-push-relay" in dockerfile
 
 
 def test_entrypoint_runs_doctor_before_exec() -> None:

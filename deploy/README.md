@@ -9,9 +9,10 @@ relay (FastAPI/uvicorn — public API on 8001, admin API on its own port
 
 - A VPS with Docker and the Compose plugin.
 - `API_DOMAIN` **A record** → the VPS (port 80 must be reachable for the
-  ACME webroot challenge). `DOCS_DOMAIN` = your docs site host (custom domain
-  once CNAME'd; the site serves from the GitHub Pages project URL until
-  then).
+  ACME webroot challenge). The API root (`/`) points callers at the docs
+  site — baked into the relay image as `DOCS_DOMAIN` (default: the
+  project's GitHub Pages URL; override in the relay service environment
+  when hosting docs elsewhere).
 - APNs `.p8` key(s) from the Apple Developer portal — keys stay on the host,
   never in git or the image.
 

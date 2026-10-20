@@ -1,7 +1,7 @@
 # Rendered by the nginx image's envsubst helper at container start (invoked
 # from nginx-entrypoint.sh, since the compose `command` bypasses the default
 # entrypoint). envsubst substitutes ONLY variables defined in the container
-# environment (${API_DOMAIN}, ${DOCS_DOMAIN}, ${FORCE_HTTPS}); nginx runtime
+# environment (${API_DOMAIN}, ${FORCE_HTTPS}); nginx runtime
 # variables such as $host, $request_uri and $binary_remote_addr survive
 # untouched.
 #
@@ -125,10 +125,13 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # API root is a JSON pointer to the docs site (landing lives on GitHub
-    # Pages); ${DOCS_DOMAIN} is substituted at render time.
+    # API root proxies to the relay, which answers with a JSON pointer to
+    # the docs site (landing lives on GitHub Pages; DOCS_DOMAIN is baked
+    # into the relay image).
     location / {
-        default_type application/json;
-        return 200 '{"docs": "https://${DOCS_DOMAIN}/"}';
+        proxy_pass http://relay:8001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }

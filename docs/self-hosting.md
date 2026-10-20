@@ -36,8 +36,6 @@ them. Secrets must be ≥32 characters; `.env` is gitignored:
 
 ```sh
 API_DOMAIN=…            # this instance's API hostname (A record → VPS)
-DOCS_DOMAIN=…           # docs hostname (bare hostname; docs serve from the
-                        # GitHub Pages project URL until a CNAME exists)
 LETSENCRYPT_EMAIL=…     # certbot sends expiry notices here
 RELAY_ADMIN_TOKEN=…     # powers `relay` / the admin API
 RELAY_MASTER_SECRET=…   # HMAC key for blind destination indexes

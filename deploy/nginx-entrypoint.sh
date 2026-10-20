@@ -4,8 +4,8 @@
 #
 # The compose `command` bypasses the image's default entrypoint (which only
 # runs envsubst when the command is nginx), so template rendering is invoked
-# explicitly here — it substitutes only defined env vars (${API_DOMAIN},
-# ${DOCS_DOMAIN}); nginx runtime variables survive untouched.
+# explicitly here — it substitutes only defined env vars (${API_DOMAIN});
+# nginx runtime variables survive untouched.
 set -eu
 
 : "${API_DOMAIN:?API_DOMAIN must be set}"
