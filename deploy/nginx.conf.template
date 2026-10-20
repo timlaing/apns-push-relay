@@ -1,14 +1,25 @@
 # Rendered by the nginx image's envsubst helper at container start (invoked
 # from nginx-entrypoint.sh, since the compose `command` bypasses the default
 # entrypoint). envsubst substitutes ONLY variables defined in the container
-# environment (${API_DOMAIN}, ${DOCS_DOMAIN}); nginx runtime variables such
-# as $host, $request_uri and $binary_remote_addr survive untouched.
+# environment (${API_DOMAIN}, ${DOCS_DOMAIN}, ${FORCE_HTTPS}); nginx runtime
+# variables such as $host, $request_uri and $binary_remote_addr survive
+# untouched.
 #
 # /admin is deliberately never proxied — the admin API is internal-network
 # only (PLAN §3). /docs, /redoc and /openapi.json ARE proxied, but the relay
 # serves them only when config sets server.swagger_ui: true (404 otherwise).
 
 limit_req_zone $binary_remote_addr zone=relaylimit:10m rate=30r/s;
+
+# Port 80 upgrades to HTTPS. ${FORCE_HTTPS} (compose default 1) keeps that
+# unconditional; set it to 0 when this nginx sits behind a TLS-terminating
+# proxy — requests carrying X-Forwarded-Proto: https are then served here
+# instead of redirected. Deliberately opt-in: at the default any client
+# could spoof the header and skip the upgrade.
+map $http_x_forwarded_proto $force_https {
+    default 1;
+    https   ${FORCE_HTTPS};
+}
 
 server {
     listen 80;
@@ -20,8 +31,23 @@ server {
         root /var/www/certbot;
     }
 
+    # Internal-only route, blocked on port 80 too: in behind-proxy mode this
+    # block proxies, and /admin must never be forwarded to the relay.
+    location /admin { return 404; }
+
+    # Default: upgrade to HTTPS. Behind a TLS-terminating proxy
+    # (FORCE_HTTPS=0) requests whose X-Forwarded-Proto is https are served
+    # instead — the `if` carries only `return` (the safe nginx pattern);
+    # proxying happens when it does not fire.
     location / {
-        return 301 https://${API_DOMAIN}$request_uri;
+        if ($force_https) {
+            return 301 https://${API_DOMAIN}$request_uri;
+        }
+        limit_req zone=relaylimit burst=60 nodelay;
+        proxy_pass http://relay:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
     }
 }
 

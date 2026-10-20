@@ -22,27 +22,62 @@ def _nginx() -> str:
     return (DEPLOY / "nginx.conf.template").read_text()
 
 
+def _location_blocks(conf: str, header: str) -> list[str]:
+    """Return every ``location <header>`` block, brace-matched."""
+    blocks = []
+    for match in re.finditer(re.escape(f"location {header}"), conf):
+        start = match.start()
+        depth = 0
+        for index in range(start, len(conf)):
+            char = conf[index]
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    blocks.append(conf[start : index + 1])
+                    break
+        else:
+            raise AssertionError(f"unterminated location block: {header}")
+    return blocks
+
+
 def _location_block(conf: str, header: str) -> str:
-    """Return the ``location <header>`` block, brace-matched."""
-    start = conf.index(f"location {header}")
-    depth = 0
-    for index in range(start, len(conf)):
-        char = conf[index]
-        if char == "{":
-            depth += 1
-        elif char == "}":
-            depth -= 1
-            if depth == 0:
-                return conf[start : index + 1]
-    raise AssertionError(f"unterminated location block: {header}")
+    """Return the first ``location <header>`` block, brace-matched."""
+    blocks = _location_blocks(conf, header)
+    assert blocks, f"no location block: {header}"
+    return blocks[0]
 
 
 # -- nginx ---------------------------------------------------------------------
 
 
 def test_admin_returns_404_at_the_edge() -> None:
-    block = _location_block(_nginx(), "/admin {")
-    assert "return 404" in block
+    """Both server blocks 404 /admin — port 80 included because it proxies in
+    behind-proxy mode and must never forward the admin API."""
+    blocks = _location_blocks(_nginx(), "/admin")
+    assert len(blocks) == 2
+    for block in blocks:
+        assert "return 404" in block
+        assert "proxy_pass" not in block
+
+
+def test_port_80_redirect_opt_out_for_tls_terminating_proxies() -> None:
+    """Plain port-80 traffic upgrades to HTTPS. With FORCE_HTTPS=0 (this nginx
+    behind a proxy that already terminated TLS) requests carrying
+    X-Forwarded-Proto: https are served instead of redirected. The `if`
+    contains only `return` — the documented-safe nginx pattern."""
+    conf = _nginx()
+    assert re.search(
+        r"map \$http_x_forwarded_proto \$force_https \{[^}]*default 1;"
+        r"[^}]*https\s+\$\{FORCE_HTTPS\};",
+        conf,
+    ), "map must default to redirect, taking the https case from ${FORCE_HTTPS}"
+    block = _location_block(conf, "/ {")  # first `location /` is port 80's
+    assert "if ($force_https)" in block
+    assert "return 301 https://${API_DOMAIN}$request_uri;" in block
+    assert "proxy_pass http://relay:8000;" in block
+    assert "proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;" in block
 
 
 def test_swagger_routes_proxy_to_the_relay() -> None:
@@ -97,6 +132,13 @@ def test_nginx_publishes_80_and_443_relay_is_loopback_only() -> None:
     compose = _compose()
     assert {"80:80", "443:443"} <= set(compose["services"]["nginx"]["ports"])
     assert set(compose["services"]["relay"]["ports"]) == {"127.0.0.1:8000:8000"}
+
+
+def test_nginx_force_https_only_disablable_via_operator_env() -> None:
+    """The compose default keeps port 80 redirecting unconditionally; only an
+    explicit FORCE_HTTPS=0 in .env (behind a TLS proxy) can turn that off."""
+    env = _compose()["services"]["nginx"]["environment"]
+    assert env["FORCE_HTTPS"] == "${FORCE_HTTPS:-1}"
 
 
 def test_relay_service_prefers_the_published_image() -> None:

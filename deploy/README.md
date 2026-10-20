@@ -54,6 +54,17 @@ redirects to HTTPS, 443 serves the API, `/admin` 404s at the edge, and
 `swagger_ui: true` serves `/docs`. Accept the browser's certificate
 warning, or check with `curl -k https://api.push.example.org/health`.
 
+## Behind another proxy
+
+To serve through an existing TLS-terminating reverse proxy (an ingress,
+another nginx, a tunnel), set `FORCE_HTTPS=0` in `.env` and recreate the
+nginx container. Port 80 then serves requests that arrive with
+`X-Forwarded-Proto: https` instead of redirecting them — the upstream has
+already terminated TLS. Plain port-80 requests still redirect, and
+`/admin` still 404s at this edge, so the admin API stays unreachable
+through the outer proxy. Forward the original `Host` header from the
+upstream proxy.
+
 ## Operations
 
 - **State** lives on the `relay-data` volume (`relay.db`, SQLite WAL) — the
@@ -62,8 +73,9 @@ warning, or check with `curl -k https://api.push.example.org/health`.
 - **CLI**: run inside the container —
   `docker compose exec relay relay status` (also `relay doctor`,
   `relay monitor`, `relay app list`, `relay tenant list`, …).
-- **`/admin` is never proxied** through nginx (internal network only); reach
-  the admin API via the CLI above (`docker compose exec`).
+- **`/admin` is never proxied** through nginx — both ports 404 it at the
+  edge (internal network only); reach the admin API via the CLI above
+  (`docker compose exec`).
 - **Onboard an app**: drop its `.p8` in `keys/`, then either add the
   `apps:` entry by hand or run `relay app add` where the config is
   writable (the container mounts it read-only — from a checkout:

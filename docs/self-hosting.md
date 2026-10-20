@@ -121,9 +121,9 @@ docker compose -f deploy/docker-compose.yml up -d
 ```
 
 !!! tip "Building from source (alternative)"
-To run a modified build — or when no release image exists yet — let
-compose build from the checkout instead (`build:` in
-`docker-compose.yml`; with no local image, `up` builds automatically):
+    To run a modified build — or when no release image exists yet — let
+    compose build from the checkout instead (`build:` in
+    `docker-compose.yml`; with no local image, `up` builds automatically):
 
     ```sh
     docker compose -f deploy/docker-compose.yml up -d --build
@@ -138,8 +138,16 @@ docker compose exec relay relay status
 ```
 
 !!! note "Staging first"
-Use Let's Encrypt **staging** while iterating on DNS to avoid rate
-limits — the compose file documents the switch.
+    Use Let's Encrypt **staging** while iterating on DNS to avoid rate
+    limits — the compose file documents the switch.
+
+!!! note "Behind another proxy"
+    If this stack sits behind an existing TLS-terminating proxy (an
+    ingress, another nginx, a tunnel), set `FORCE_HTTPS=0` in `.env` and
+    recreate the nginx container: port 80 then serves requests arriving
+    with `X-Forwarded-Proto: https` instead of redirecting them. Plain
+    port-80 requests still redirect, and `/admin` still 404s at the edge.
+    Forward the original `Host` header from the upstream proxy.
 
 ## 5. Day-two operations
 

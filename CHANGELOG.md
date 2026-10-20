@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning].
   the `keys/AuthKey_*.p8` files present (fully scriptable with flags +
   `--yes`); edits preserve comments and write a `config.yaml.bak`
   backup before each change.
+- **Behind-proxy mode**: `FORCE_HTTPS=0` (`.env`) makes port 80 serve
+  requests arriving with `X-Forwarded-Proto: https` — for stacks behind
+  a TLS-terminating reverse proxy — instead of redirecting them. The
+  default keeps port 80 redirecting unconditionally, and `/admin` 404s
+  at the edge on both ports.
 
 ### Changed
 
@@ -31,6 +36,16 @@ and this project adheres to [Semantic Versioning].
 - `bundle_id` clarified in the example config and docs: it is the bundle
   identifier only — the APNs topic _is_ the bundle id (no App ID
   prefix).
+- The relay's own port is published on host loopback
+  (`127.0.0.1:8000`) so the CLI and Swagger work before nginx exists;
+  LAN/Internet exposure stays nginx's job.
+
+### Fixed
+
+- `server.swagger_ui` was documented but never read by the config
+  loader — only code-level overrides could enable it. The loader now
+  reads and validates the key (bool), and rejects unknown `server:`
+  keys so a documented option can't silently vanish again.
 
 ## [0.2.0] - 2026-10-20
 
