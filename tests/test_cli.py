@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import sys
 from importlib.metadata import version as package_version
 from pathlib import Path
@@ -28,6 +29,19 @@ SECRET = "s" * 32
 FROZEN_TS = 1_800_000_000  # the clock fixture's start
 NOW_ISO = "2027-01-15 08:00:00Z"  # _iso(FROZEN_TS)
 NOW_ISO_10 = "2027-01-15 08:00:10Z"  # _iso(FROZEN_TS + 10)
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    """Strip rich's ANSI styling from captured output.
+
+    CI forces colour on (TTY_COMPATIBLE/FORCE_COLOR), which wraps styled runs
+    in escape sequences and splits phrases like ``"Usage: relay"`` across run
+    boundaries; assertions read the plain text underneath.
+    """
+    return _ANSI_RE.sub("", text)
+
 
 STATUS_JSON = {
     "version": "9.9.9-test",
@@ -844,12 +858,12 @@ def test_connect_error_reports_request_failed(monkeypatch, capsys) -> None:
 def test_no_args_exits_2(capsys) -> None:
     assert main([]) == 2
     # no_args_is_help prints the root help before exiting
-    assert "Usage: relay" in capsys.readouterr().out
+    assert "Usage: relay" in _plain(capsys.readouterr().out)
 
 
 def test_unknown_subcommand_exits_2(capsys) -> None:
     assert main(["frobnicate"]) == 2
-    err = capsys.readouterr().err
+    err = _plain(capsys.readouterr().err)
     assert "No such command 'frobnicate'." in err
     assert "Usage: relay" in err  # error is followed by help
 
@@ -1004,7 +1018,7 @@ def test_usage_error_without_context_shows_root_help(monkeypatch, capsys) -> Non
 
     monkeypatch.setattr(typer_main, "get_command", lambda _app: FailingCommand())
     assert cli_main.main(["doctor"]) == 2
-    err = capsys.readouterr().err
+    err = _plain(capsys.readouterr().err)
     assert "error: kaboom" in err
     assert "Usage: relay" in err  # falls back to the root help
 
@@ -1362,7 +1376,7 @@ def test_app_add_api_error_surfaces_detail(monkeypatch, capsys) -> None:
         )
         == 1
     )
-    err = capsys.readouterr().err
+    err = _plain(capsys.readouterr().err)
     assert "invalid_app" in err
     assert "reverse-DNS" in err
     assert "Usage: relay app add" in err  # errors still teach the command
