@@ -24,6 +24,7 @@ from typing import Any
 import httpx
 import typer
 from cryptography.hazmat.primitives import hashes
+from rich import box
 from rich.console import Console, Group
 from rich.live import Live
 from rich.markup import escape
@@ -367,7 +368,7 @@ def fetch_roots(
 
 
 def _status_view(data: dict[str, Any]) -> Group:
-    head = Table(box=None, pad_edge=False)
+    head = Table(box=box.ROUNDED)
     head.add_column("field", style="bold cyan")
     head.add_column("value")
     head.add_row("status", str(data["status"]))
@@ -375,7 +376,7 @@ def _status_view(data: dict[str, Any]) -> Group:
     head.add_row("tenants", str(data["tenants"]))
     head.add_row("denylisted", str(data["denylisted"]))
 
-    apps = Table(box=None, pad_edge=False, title="apps")
+    apps = Table(box=box.ROUNDED, title="apps")
     apps.add_column("id")
     apps.add_column("state")
     apps.add_column("key")
@@ -399,7 +400,7 @@ def _status_view(data: dict[str, Any]) -> Group:
             f"{ttl['min']}..{ttl['max']}s default {ttl['default']}s",
         )
 
-    metrics = Table(box=None, pad_edge=False, title="metrics")
+    metrics = Table(box=box.ROUNDED, title="metrics")
     metrics.add_column("metric")
     metrics.add_column("labels")
     metrics.add_column("count", justify="right")
@@ -407,7 +408,7 @@ def _status_view(data: dict[str, Any]) -> Group:
         rendered = ", ".join(
             f"{label or 'total'}={count}" for label, count in sorted(labels.items())
         )
-        metrics.add_row(name, rendered, "")
+        metrics.add_row(name, rendered, str(sum(labels.values())))
     return Group(head, apps, metrics)
 
 
@@ -467,7 +468,7 @@ def _monitor_frame(errors: bool) -> Group:
         status_data = _call(client, "GET", "/admin/status")
         logs_data = _call(client, "GET", "/admin/logs", params=params)
 
-    recent = Table(box=None, pad_edge=False, title="recent requests")
+    recent = Table(box=box.ROUNDED, title="recent requests")
     recent.add_column("ts")
     recent.add_column("status", justify="right")
     recent.add_column("code")
@@ -524,7 +525,7 @@ def tenant_list(
     if not rows:
         out.print("(no tenants)")
         return
-    table = Table(box=None, pad_edge=False)
+    table = Table(box=box.ROUNDED)
     table.add_column("tenant")
     table.add_column("app")
     table.add_column("registered")
@@ -606,7 +607,7 @@ def denylist_list(ctx: typer.Context) -> None:
     if not entries:
         out.print("(denylist empty)")
         return
-    table = Table(box=None, pad_edge=False)
+    table = Table(box=box.ROUNDED)
     table.add_column("key")
     table.add_column("expires")
     for entry in entries:
@@ -638,7 +639,7 @@ def app_list(ctx: typer.Context, config: Path | None = _CONFIG_OPT) -> None:
     """List apps from config.yaml (offline)."""
     del ctx
     entries = configedit.list_apps(_config_path(config))
-    table = Table(box=None, pad_edge=False)
+    table = Table(box=box.ROUNDED)
     for column in ("id", "bundle_id", "team_id", "key_id", "environments"):
         table.add_column(column)
     for entry in entries:
