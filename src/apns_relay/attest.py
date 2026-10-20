@@ -10,7 +10,9 @@ CBOR field handling follows Apple's current App Attest verification document
 and must be validated against a physical device before production use (M4).
 
 The Apple App Attestation Root certificate is loaded from a PEM file supplied
-by the operator (``attest_root_cert``), never hardcoded.
+by the operator (``attest_root_cert``). The container downloads it from
+Apple's public URL at startup (and ``relay fetch-roots`` on demand), verified
+against a pinned SHA-256 — the certificate itself is never hardcoded.
 """
 
 from __future__ import annotations
@@ -23,9 +25,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import cbor2
+import httpx
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
 
@@ -41,6 +44,20 @@ APPLE_ATTEST_NONCE_OID = x509.ObjectIdentifier("1.2.840.113635.100.8.2")
 # Real attestation objects have used both fmt strings; neither is a security
 # property (the chain + nonce-extension binding is), so accept both.
 APPLE_ATTEST_FORMATS = ("apple", "apple-appattest")
+
+# Apple publishes a single App Attestation Root CA (valid 2020-03-18 ..
+# 2045-03-15) on its developer certificate-authority page; the development
+# and production environments chain to it and are separated by AAGUID (spec
+# §2.2). The link is public — no Apple Developer session is needed.
+APPLE_ATTEST_ROOT_URL = (
+    "https://www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem"
+)
+
+# SHA-256 of that root. Apple rotates roots rarely; a mismatch here is either
+# a rotation (update this pin in a release, only after verifying Apple's
+# announcement) or a tampered response — both must fail loudly rather than
+# trust whatever the download served.
+APPLE_ATTEST_ROOT_SHA256 = "1cb9823ba28ba6ad2d33a006941de2ae4f513ef1d4e831b9f7e0fa7b6242c932"
 
 # Apple pins the AAGUID per App Attest environment ("Validating apps that
 # connect to your server", attestation step 8).
@@ -59,6 +76,42 @@ class AttestedCredential:
 
 def load_attest_root(path: Path) -> x509.Certificate:
     return x509.load_pem_x509_certificate(path.read_bytes())
+
+
+def fetch_attest_root(
+    url: str,
+    dest: Path,
+    *,
+    expected_sha256: str | None = None,
+    transport: httpx.BaseTransport | None = None,
+    timeout: float = 20.0,
+) -> x509.Certificate:
+    """Download the App Attest root PEM from ``url`` into ``dest``.
+
+    The response is parsed and its SHA-256 verified against
+    ``expected_sha256`` (default: the pinned
+    ``APPLE_ATTEST_ROOT_SHA256``) *before* anything is written: a rotation or
+    a tampered response raises ``AttestError`` and leaves any existing file
+    untouched. Returns the verified certificate.
+    """
+    pin = expected_sha256 or APPLE_ATTEST_ROOT_SHA256
+    try:
+        with httpx.Client(transport=transport, timeout=timeout) as client:
+            response = client.get(url)
+    except httpx.HTTPError as exc:
+        raise AttestError(f"root_download_failed: {exc}") from None
+    if response.status_code != 200:
+        raise AttestError(f"root_download_failed: HTTP {response.status_code}")
+    try:
+        cert = x509.load_pem_x509_certificate(response.content)
+    except ValueError:
+        raise AttestError("root_download_invalid") from None
+    fingerprint = cert.fingerprint(hashes.SHA256()).hex()
+    if fingerprint != pin:
+        raise AttestError(f"root_fingerprint_mismatch: {fingerprint}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(response.content)
+    return cert
 
 
 def _verify_chain(

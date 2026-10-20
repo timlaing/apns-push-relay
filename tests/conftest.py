@@ -74,6 +74,7 @@ def write_config(
     ttl: dict[str, int] | None = None,
     include_second_app: bool = False,
     caps: dict[str, int] | None = None,
+    attest_root_url: str | object | None = ...,
 ) -> Path:
     """Materialize an instance directory (keys + config.yaml) and return its path."""
     keys = base / "keys"
@@ -132,6 +133,8 @@ def write_config(
     enrollment: dict[str, Any] = {"grant_issuer_key": "keys/issuer.pem", "challenge_ttl": 600}
     if roots:
         enrollment["attest_root_certs"] = {k: str(v) for k, v in roots.items()}
+    if attest_root_url is not ...:
+        enrollment["attest_root_url"] = attest_root_url
     config = {
         "server": {"api_domain": "api.test.example", "docs_domain": "docs.test.example"},
         "enrollment": enrollment,
@@ -168,17 +171,29 @@ class RootCA:
         return self.cert.public_bytes(serialization.Encoding.PEM)
 
 
-def make_root(common: str = "Test App Attest Root") -> RootCA:
+def make_root(
+    common: str = "Test App Attest Root",
+    *,
+    valid_days: int = 3650,
+    expired_days: int | None = None,
+) -> RootCA:
+    """Mint a self-signed root; ``expired_days`` backdates expiry (expiry tests)."""
     key = ec.generate_private_key(ec.SECP256R1())
     now = datetime.now(UTC)
+    if expired_days is None:
+        not_before = now - timedelta(days=1)
+        not_after = now + timedelta(days=valid_days)
+    else:
+        not_before = now - timedelta(days=expired_days + 1)
+        not_after = now - timedelta(days=expired_days)
     cert = (
         x509.CertificateBuilder()
         .subject_name(_name(common))
         .issuer_name(_name(common))
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(now - timedelta(days=1))
-        .not_valid_after(now + timedelta(days=3650))
+        .not_valid_before(not_before)
+        .not_valid_after(not_after)
         .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
         .sign(key, hashes.SHA256())
     )

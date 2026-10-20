@@ -14,14 +14,17 @@ import os
 import sys
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
+from cryptography.hazmat.primitives import hashes
 
+from .. import attest as attest_mod
 from ..apns import KeyRegistry
 from ..app import DEFAULT_CONFIG, load_issuer_key
-from ..attest import load_attest_root
-from ..config import ConfigError, load_config
+from ..attest import AttestError, fetch_attest_root, load_attest_root
+from ..config import ConfigError, RelayConfig, load_config
 from ..signing import sha256hex
 from ..store import Store
 
@@ -98,8 +101,48 @@ def _iso(epoch: float | int) -> str:
 # -- doctor (offline) ---------------------------------------------------------
 
 
+def _fetch_attest_roots(
+    config: RelayConfig,
+    transport: httpx.BaseTransport | None,
+    *,
+    only_missing: bool,
+    ok: Any,
+    fail: Any,
+) -> int:
+    """Download the App Attest root into every configured path.
+
+    With ``only_missing`` (container startup) existing files are left alone —
+    the boot never depends on the network. Otherwise each path is
+    re-downloaded (``relay fetch-roots`` / ``relay doctor --fetch-roots`` =
+    update). Returns the number of failures.
+    """
+    url = config.enrollment.attest_root_url
+    if not url:
+        fail("fetch-roots", "enrollment.attest_root_url is not set")
+        return 1
+    failures = 0
+    seen: set[Path] = set()
+    for environment, root_path in sorted(config.enrollment.attest_root_certs.items()):
+        if root_path in seen:
+            continue  # environments may share one root file — fetch it once
+        seen.add(root_path)
+        if only_missing and root_path.exists():
+            print(f"note  fetch-root[{environment}]: {root_path} present — skipped")
+            continue
+        try:
+            root = fetch_attest_root(url, root_path, transport=transport)
+        except AttestError as exc:
+            failures += 1
+            fail(f"fetch-root[{environment}]", f"{root_path}: {exc}")
+            continue
+        ok(
+            f"fetch-root[{environment}]",
+            f"{root_path} ({root.subject.rfc4514_string()})",
+        )
+    return failures
+
+
 def cmd_doctor(args: argparse.Namespace, transport: httpx.BaseTransport | None) -> int:
-    del args, transport  # offline: no API client
     failures = 0
 
     def ok(label: str, detail: str) -> None:
@@ -110,6 +153,9 @@ def cmd_doctor(args: argparse.Namespace, transport: httpx.BaseTransport | None) 
         failures += 1
         print(f"FAIL  {label}: {detail}")
 
+    def warn(label: str, detail: str) -> None:
+        print(f"warn  {label}: {detail}")
+
     config_path = os.environ.get("RELAY_CONFIG", DEFAULT_CONFIG)
     try:
         config = load_config(config_path, admin_token=os.environ.get("RELAY_ADMIN_TOKEN"))
@@ -118,6 +164,9 @@ def cmd_doctor(args: argparse.Namespace, transport: httpx.BaseTransport | None) 
         print("doctor: 1 check failed")
         return 1
     ok("config", f"{len(config.apps)} app(s) from {config_path}")
+
+    if args.fetch_roots:
+        failures += _fetch_attest_roots(config, transport, only_missing=False, ok=ok, fail=fail)
 
     try:
         registry = KeyRegistry(config.enabled_apps)
@@ -141,9 +190,28 @@ def cmd_doctor(args: argparse.Namespace, transport: httpx.BaseTransport | None) 
     for environment, root_path in sorted(config.enrollment.attest_root_certs.items()):
         try:
             root = load_attest_root(root_path)
-            ok(f"attest-root[{environment}]", f"{root_path} ({root.subject.rfc4514_string()})")
         except (OSError, ValueError) as exc:
             fail(f"attest-root[{environment}]", str(exc))
+            continue
+        fingerprint = root.fingerprint(hashes.SHA256()).hex()
+        days_left = (root.not_valid_after_utc - datetime.now(UTC)).days
+        detail = (
+            f"{root_path} ({root.subject.rfc4514_string()};"
+            f" sha256={fingerprint[:16]}; expires {root.not_valid_after_utc.date()})"
+        )
+        if days_left < 0:
+            fail(f"attest-root[{environment}]", f"{detail} — EXPIRED")
+        elif days_left < 90:
+            warn(f"attest-root[{environment}]", f"{detail} — expires in {days_left}d")
+        else:
+            ok(f"attest-root[{environment}]", detail)
+        if fingerprint != attest_mod.APPLE_ATTEST_ROOT_SHA256:
+            warn(
+                f"attest-root[{environment}]",
+                "sha256 differs from the pinned Apple root — fine if this is"
+                " your own root; after an Apple rotation, verify the new"
+                " fingerprint and update APPLE_ATTEST_ROOT_SHA256 in a release",
+            )
 
     secret = os.environ.get("RELAY_MASTER_SECRET", "")
     if len(secret) >= 32:
@@ -162,6 +230,29 @@ def cmd_doctor(args: argparse.Namespace, transport: httpx.BaseTransport | None) 
         return 1
     print("doctor: all checks passed")
     return 0
+
+
+def cmd_fetch_roots(args: argparse.Namespace, transport: httpx.BaseTransport | None) -> int:
+    config_path = os.environ.get("RELAY_CONFIG", DEFAULT_CONFIG)
+    try:
+        config = load_config(config_path, admin_token=os.environ.get("RELAY_ADMIN_TOKEN"))
+    except ConfigError as exc:
+        print(f"FAIL  config: {exc}")
+        return 1
+
+    def ok(label: str, detail: str) -> None:
+        print(f"ok    {label}: {detail}")
+
+    def fail(label: str, detail: str) -> None:
+        print(f"FAIL  {label}: {detail}")
+
+    if not config.enrollment.attest_root_certs:
+        print("note  fetch-roots: no attest_root_certs configured — nothing to fetch")
+        return 0
+    failures = _fetch_attest_roots(
+        config, transport, only_missing=bool(args.if_missing), ok=ok, fail=fail
+    )
+    return 1 if failures else 0
 
 
 # -- status / metrics / logs ---------------------------------------------------
@@ -317,9 +408,22 @@ def _parser() -> argparse.ArgumentParser:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("doctor", help="offline: config + keys + JWT pre-sign + secrets").set_defaults(
-        func=cmd_doctor
+    doctor = sub.add_parser("doctor", help="offline: config + keys + JWT pre-sign + secrets")
+    doctor.add_argument(
+        "--fetch-roots",
+        action="store_true",
+        help="re-download the App Attest root(s) from enrollment.attest_root_url",
     )
+    doctor.set_defaults(func=cmd_doctor)
+    fetch = sub.add_parser(
+        "fetch-roots", help="download/update the App Attest root(s) (pinned SHA-256)"
+    )
+    fetch.add_argument(
+        "--if-missing",
+        action="store_true",
+        help="skip paths that already have a file (container startup)",
+    )
+    fetch.set_defaults(func=cmd_fetch_roots)
     sub.add_parser("status", help="health, tenants, quota config, metric snapshot").set_defaults(
         func=cmd_status
     )

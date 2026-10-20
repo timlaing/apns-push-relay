@@ -20,13 +20,18 @@ enrollment:
   #   mkdir -p keys && openssl genpkey -algorithm ed25519 -out keys/issuer.pem
   grant_issuer_key: keys/issuer.pem
   challenge_ttl: 600 # seconds; bounds 60..3600
-  # App Attestation root PEMs, downloaded from Apple (development and
-  # production attestations chain to different roots). Until the root for an
-  # App's attest_environment resolves, enroll/finish fails closed with 400
-  # attestation_unavailable; roots are operator-supplied, never hardcoded.
-  # attest_root_certs:
-  #   development: keys/apple-attest-development.pem
-  #   production: keys/apple-attest-production.pem
+  # App Attest root: Apple publishes ONE root CA for App Attest (development
+  # and production attestations chain to it; AAGUIDs separate the
+  # environments). The container downloads it at startup from this public URL
+  # and verifies it against a pinned SHA-256; `relay doctor --fetch-roots`
+  # re-downloads. Set to null to manage the file(s) yourself.
+  attest_root_url: https://www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem
+  # Where the root lands / which file each environment verifies. Until the
+  # root for an App's attest_environment resolves, enroll/finish fails closed
+  # with 400 attestation_unavailable.
+  attest_root_certs:
+    development: /var/lib/apns-relay/apple-attest-root.pem
+    production: /var/lib/apns-relay/apple-attest-root.pem
 
 storage:
   database: /var/lib/apns-relay/relay.db # SQLite WAL — the only backup target

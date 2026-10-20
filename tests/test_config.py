@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 import yaml
 
+from apns_relay.attest import APPLE_ATTEST_ROOT_URL
 from apns_relay.config import (
     ConfigError,
     GrantTtlConfig,
@@ -171,6 +172,7 @@ def test_top_level_not_mapping(tmp_path: Path, raw: str) -> None:
             set_in("enrollment", "attest_root_certs", {"production": 5}),
             "attest_root_certs.production: expected path",
         ),
+        (set_in("enrollment", "attest_root_url", 5), "attest_root_url: expected string or null"),
         (set_in(None, "storage", 3), "storage: expected mapping"),
         (set_in("storage", "bogus", 1), "storage: unknown keys"),
         (drop(None, "apps"), "missing required key 'apps'"),
@@ -326,6 +328,23 @@ def test_relative_root_resolved_and_root_for(tmp_path: Path) -> None:
     config = load(tmp_path, raw)
     assert config.enrollment.root_for("production") == tmp_path / "roots/prod.pem"
     assert config.enrollment.root_for("development") is None
+
+
+def test_attest_root_url_default(tmp_path: Path) -> None:
+    config = load(tmp_path, valid_config())
+    assert config.enrollment.attest_root_url == APPLE_ATTEST_ROOT_URL
+
+
+def test_attest_root_url_explicit(tmp_path: Path) -> None:
+    raw = valid_config()
+    raw["enrollment"]["attest_root_url"] = "https://mirror.example/root.pem"
+    assert load(tmp_path, raw).enrollment.attest_root_url == "https://mirror.example/root.pem"
+
+
+def test_attest_root_url_null_disables_fetch(tmp_path: Path) -> None:
+    raw = valid_config()
+    raw["enrollment"]["attest_root_url"] = None
+    assert load(tmp_path, raw).enrollment.attest_root_url is None
 
 
 def test_defaults_when_sections_omitted(tmp_path: Path) -> None:

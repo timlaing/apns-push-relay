@@ -13,7 +13,9 @@ from pathlib import Path
 import httpx
 import pytest
 import yaml
+from cryptography.hazmat.primitives import hashes
 
+import apns_relay.attest as attest_mod
 from apns_relay.cli.main import CliError, _call, _duration_to_seconds, main
 from tests.conftest import ADMIN_TOKEN, APP_ID, KEY_ID, TENANT_ID, make_root, write_config
 
@@ -207,6 +209,189 @@ def test_doctor_unwritable_database_path(tmp_path, monkeypatch, capsys) -> None:
     assert "ok    database" not in out
     assert "FAIL  database" in out
     assert "doctor: 1 check(s) failed" in out
+
+
+# -- doctor attest-root checks + fetch-roots -----------------------------------
+
+
+def _pin(monkeypatch: pytest.MonkeyPatch, root) -> None:
+    """Point the pinned SHA-256 at a minted root (rotation-style update)."""
+    monkeypatch.setattr(
+        attest_mod, "APPLE_ATTEST_ROOT_SHA256", root.cert.fingerprint(hashes.SHA256()).hex()
+    )
+
+
+def _no_network(request: httpx.Request) -> httpx.Response:
+    raise AssertionError("no request should be sent")
+
+
+def test_doctor_root_detail_shows_fingerprint_expiry_and_pin_warn(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    # _instance's minted root will not match the real Apple pin: warn, not fail.
+    config = _instance(tmp_path)
+    _doctor_env(monkeypatch, config)
+    assert main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "ok    attest-root[production]:" in out
+    assert "sha256=" in out
+    assert "expires " in out
+    assert "warn  attest-root[production]: sha256 differs from the pinned Apple root" in out
+    assert "all checks passed" in out
+
+
+def test_doctor_root_matching_pin_has_no_warn(tmp_path, monkeypatch, capsys) -> None:
+    base = tmp_path / "instance"
+    root = make_root("Prod Root")
+    root_path = base / "production-root.pem"
+    config = write_config(base, roots={"production": root_path})
+    root_path.write_bytes(root.pem)
+    _pin(monkeypatch, root)
+    _doctor_env(monkeypatch, config)
+    assert main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "warn  attest-root" not in out
+    assert "all checks passed" in out
+
+
+def test_doctor_root_expired_fails(tmp_path, monkeypatch, capsys) -> None:
+    base = tmp_path / "instance"
+    expired = make_root("Expired Root", expired_days=2)
+    root_path = base / "production-root.pem"
+    config = write_config(base, roots={"production": root_path})
+    root_path.write_bytes(expired.pem)
+    _doctor_env(monkeypatch, config)
+    assert main(["doctor"]) == 1
+    out = capsys.readouterr().out
+    assert "FAIL  attest-root[production]:" in out
+    assert "EXPIRED" in out
+
+
+def test_doctor_root_expiring_soon_warns_but_passes(tmp_path, monkeypatch, capsys) -> None:
+    base = tmp_path / "instance"
+    aging = make_root("Aging Root", valid_days=30)
+    root_path = base / "production-root.pem"
+    config = write_config(base, roots={"production": root_path})
+    root_path.write_bytes(aging.pem)
+    _doctor_env(monkeypatch, config)
+    assert main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "warn  attest-root[production]:" in out
+    assert "expires in" in out
+    assert "all checks passed" in out
+
+
+def test_doctor_root_missing_file_fails(tmp_path, monkeypatch, capsys) -> None:
+    base = tmp_path / "instance"
+    config = write_config(base, roots={"production": base / "absent.pem"})
+    _doctor_env(monkeypatch, config)
+    assert main(["doctor"]) == 1
+    assert "FAIL  attest-root[production]" in capsys.readouterr().out
+
+
+def test_fetch_roots_downloads_missing_file(tmp_path, monkeypatch, capsys) -> None:
+    base = tmp_path / "instance"
+    dest = base / "apple-attest-root.pem"
+    config = write_config(base, roots={"production": dest})
+    root = make_root("Fetched Root")
+    _pin(monkeypatch, root)
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=root.pem))
+    _doctor_env(monkeypatch, config)
+    assert main(["fetch-roots"], transport=transport) == 0
+    out = capsys.readouterr().out
+    assert "ok    fetch-root[production]:" in out
+    assert dest.read_bytes() == root.pem
+
+
+def test_fetch_roots_if_missing_skips_existing_without_network(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    config = _instance(tmp_path)  # already has production-root.pem on disk
+    _doctor_env(monkeypatch, config)
+    assert main(["fetch-roots", "--if-missing"], transport=httpx.MockTransport(_no_network)) == 0
+    out = capsys.readouterr().out
+    assert "present — skipped" in out
+    assert (config.parent / "production-root.pem").exists()
+
+
+def test_fetch_roots_update_overwrites_existing(tmp_path, monkeypatch, capsys) -> None:
+    config = _instance(tmp_path)
+    rotated = make_root("Rotated Root")
+    _pin(monkeypatch, rotated)
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=rotated.pem))
+    _doctor_env(monkeypatch, config)
+    assert main(["fetch-roots"], transport=transport) == 0
+    assert (config.parent / "production-root.pem").read_bytes() == rotated.pem
+
+
+def test_fetch_roots_shared_path_fetched_once(tmp_path, monkeypatch, capsys) -> None:
+    base = tmp_path / "instance"
+    dest = base / "apple-attest-root.pem"
+    config = write_config(base, roots={"development": dest, "production": dest})
+    root = make_root("Fetched Root")
+    _pin(monkeypatch, root)
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(200, content=root.pem)
+
+    _doctor_env(monkeypatch, config)
+    assert main(["fetch-roots"], transport=httpx.MockTransport(handler)) == 0
+    out = capsys.readouterr().out
+    assert len(calls) == 1
+    assert out.count("ok    fetch-root") == 1
+
+
+def test_fetch_roots_disabled_url_fails(tmp_path, monkeypatch, capsys) -> None:
+    base = tmp_path / "instance"
+    dest = base / "apple-attest-root.pem"
+    config = write_config(base, roots={"production": dest}, attest_root_url=None)
+    _doctor_env(monkeypatch, config)
+    assert main(["fetch-roots"], transport=httpx.MockTransport(_no_network)) == 1
+    assert "FAIL  fetch-roots: enrollment.attest_root_url is not set" in capsys.readouterr().out
+
+
+def test_fetch_roots_no_roots_configured(tmp_path, monkeypatch, capsys) -> None:
+    config = _instance(tmp_path, roots=False)
+    _doctor_env(monkeypatch, config)
+    assert main(["fetch-roots"], transport=httpx.MockTransport(_no_network)) == 0
+    assert "no attest_root_certs configured" in capsys.readouterr().out
+
+
+def test_fetch_roots_bad_config_fails(tmp_path, monkeypatch, capsys) -> None:
+    _doctor_env(monkeypatch, tmp_path / "absent.yaml")
+    assert main(["fetch-roots"], transport=httpx.MockTransport(_no_network)) == 1
+    assert "FAIL  config:" in capsys.readouterr().out
+
+
+def test_doctor_fetch_roots_flag_downloads_and_checks(tmp_path, monkeypatch, capsys) -> None:
+    base = tmp_path / "instance"
+    dest = base / "apple-attest-root.pem"
+    config = write_config(base, roots={"production": dest})
+    rotated = make_root("Rotated Root")
+    _pin(monkeypatch, rotated)
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=rotated.pem))
+    _doctor_env(monkeypatch, config)
+    assert main(["doctor", "--fetch-roots"], transport=transport) == 0
+    out = capsys.readouterr().out
+    assert "ok    fetch-root[production]:" in out
+    assert "ok    attest-root[production]:" in out
+    assert dest.read_bytes() == rotated.pem
+    assert "all checks passed" in out
+
+
+def test_doctor_fetch_roots_download_failure_fails_check(tmp_path, monkeypatch, capsys) -> None:
+    base = tmp_path / "instance"
+    dest = base / "apple-attest-root.pem"
+    config = write_config(base, roots={"production": dest})
+    transport = httpx.MockTransport(lambda request: httpx.Response(503))
+    _doctor_env(monkeypatch, config)
+    assert main(["doctor", "--fetch-roots"], transport=transport) == 1
+    out = capsys.readouterr().out
+    assert "FAIL  fetch-root[production]:" in out
+    assert "HTTP 503" in out
+    assert not dest.exists()  # nothing written on failure
 
 
 # -- status / metrics / logs ---------------------------------------------------

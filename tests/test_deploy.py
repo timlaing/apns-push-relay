@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from apns_relay.attest import APPLE_ATTEST_ROOT_URL
 from apns_relay.config import ConfigError, load_config
 from tests.conftest import ADMIN_TOKEN
 
@@ -135,6 +136,14 @@ def test_entrypoint_runs_doctor_before_exec() -> None:
     assert script.index("relay doctor") < script.index('exec "$@"')
 
 
+def test_entrypoint_fetches_missing_roots_before_doctor() -> None:
+    """Startup fetch is best-effort (--if-missing, non-fatal); doctor is the gate."""
+    script = (DEPLOY / "relay-entrypoint.sh").read_text()
+    commands = [line for line in script.splitlines() if line.startswith("relay ")]
+    assert commands[0].startswith("relay fetch-roots --if-missing ||")
+    assert commands[1] == "relay doctor"
+
+
 # -- config.yaml.example --------------------------------------------------------
 
 
@@ -153,7 +162,11 @@ def test_example_config_loads_structurally() -> None:
     assert config.server.swagger_ui is False
     assert config.enrollment.challenge_ttl == 600
     assert config.enrollment.grant_issuer_key == path.parent / "keys/issuer.pem"
-    assert config.enrollment.attest_root_certs == {}
+    assert config.enrollment.attest_root_url == APPLE_ATTEST_ROOT_URL
+    assert config.enrollment.attest_root_certs == {
+        "development": Path("/var/lib/apns-relay/apple-attest-root.pem"),
+        "production": Path("/var/lib/apns-relay/apple-attest-root.pem"),
+    }
     assert config.database == Path("/var/lib/apns-relay/relay.db")
     app = config.apps[0]
     assert app.id == "my-app"

@@ -24,8 +24,9 @@ RUN uv export --frozen --no-dev --no-emit-project --no-hashes \
     && uv pip install --system -r /tmp/requirements.txt \
     && uv pip install --system --no-deps .
 
-# Non-root runtime user; the data dir (SQLite db, keys at rest) lives on a
-# named volume mounted at /var/lib/apns-relay.
+# Non-root runtime user; the data dir (SQLite db, keys at rest, the
+# downloaded App Attest root) lives on a named volume mounted at
+# /var/lib/apns-relay.
 RUN useradd --system --uid 10001 --user-group --no-create-home \
         --home-dir /var/lib/apns-relay relay \
     && mkdir -p /var/lib/apns-relay /etc/apns-relay \
@@ -41,7 +42,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
 
 # Single worker: SQLite has a single writer — more workers would contend on
-# the write lock for no throughput gain. The entrypoint runs `relay doctor`
-# first (config + keys + JWT pre-sign pre-flight, PLAN §5).
+# the write lock for no throughput gain. The entrypoint fetches the App Attest
+# root when missing, then runs `relay doctor` first (config + keys + JWT
+# pre-sign pre-flight, PLAN §5).
 ENTRYPOINT ["/usr/local/bin/relay-entrypoint"]
 CMD ["uvicorn", "apns_relay.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

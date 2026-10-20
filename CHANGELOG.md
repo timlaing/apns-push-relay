@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Added
+
+- **Automatic App Attest root**: the container downloads Apple's public
+  App Attestation Root CA at startup into the data volume, verified
+  against a pinned SHA-256 (fail-loud on mismatch — a rotation is a
+  deliberate release, never a silent trust change).
+  `relay fetch-roots [--if-missing]` and `relay doctor --fetch-roots`
+  re-download/update it, and `relay doctor` now reports each configured
+  root's fingerprint and expiry (warns under 90 days, fails when
+  expired). `enrollment.attest_root_url` selects the source (`null`
+  disables fetching for fully manual root management).
+
+### Changed
+
+- `enrollment.attest_root_certs` documentation updated: Apple publishes
+  one App Attest root for both environments (AAGUIDs separate them); the
+  example config now ships both environments pointing at the downloaded
+  root in the data volume.
+
 ## [0.1.0] - 2026-10-20
 
 ### Added

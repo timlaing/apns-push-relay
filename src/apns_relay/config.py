@@ -14,6 +14,8 @@ from typing import Any
 
 import yaml
 
+from .attest import APPLE_ATTEST_ROOT_URL
+
 TEAM_ID_RE = re.compile(r"^[A-Z0-9]{10}$")
 KEY_ID_RE = re.compile(r"^[A-Z0-9]{10}$")
 APP_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
@@ -292,12 +294,19 @@ def _parse_app(raw: dict[str, Any], base: Path) -> AppKeyConfig:
 class EnrollmentConfig:
     grant_issuer_key: Path
     challenge_ttl: int = 600
-    # Environment-specific App Attestation root certs supplied by the operator
-    # (development vs production attestations chain to different roots). Paths
-    # resolve relative to the config file. Attestation verification fails closed
+    # App Attest root cert path(s). Apple publishes ONE App Attestation Root
+    # CA — development and production attestations chain to it and are
+    # separated by AAGUID (spec §2.2) — but each environment's path is
+    # configurable so operators may point at their own copies. Paths resolve
+    # relative to the config file. Attestation verification fails closed
     # (enroll/finish → attestation_unavailable) when the root for the App's
-    # attest_environment is absent — roots are never hardcoded.
+    # attest_environment is absent.
     attest_root_certs: dict[str, Path] = field(default_factory=dict)
+    # Public URL the root is downloaded from at container startup and via
+    # `relay fetch-roots` / `relay doctor --fetch-roots`; the download is
+    # verified against the pinned SHA-256 (attest.APPLE_ATTEST_ROOT_SHA256).
+    # Set to null to manage the root file(s) entirely by hand.
+    attest_root_url: str | None = APPLE_ATTEST_ROOT_URL
 
     def root_for(self, environment: str) -> Path | None:
         return self.attest_root_certs.get(environment)
@@ -357,7 +366,12 @@ def load_config(path: str | Path, *, admin_token: str | None = None) -> RelayCon
     issuer = Path(_expect(enroll_raw, "grant_issuer_key", str, "enrollment"))
     if not issuer.is_absolute():
         issuer = path.parent / issuer
-    unknown = set(enroll_raw) - {"grant_issuer_key", "challenge_ttl", "attest_root_certs"}
+    unknown = set(enroll_raw) - {
+        "grant_issuer_key",
+        "challenge_ttl",
+        "attest_root_certs",
+        "attest_root_url",
+    }
     if unknown:
         raise ConfigError(f"enrollment: unknown keys {sorted(unknown)}")
     challenge_ttl = (
@@ -378,8 +392,14 @@ def load_config(path: str | Path, *, admin_token: str | None = None) -> RelayCon
         if not resolved.is_absolute():
             resolved = path.parent / resolved
         roots[env_name] = resolved
+    url_raw = enroll_raw.get("attest_root_url", APPLE_ATTEST_ROOT_URL)
+    if url_raw is not None and not isinstance(url_raw, str):
+        raise ConfigError("enrollment.attest_root_url: expected string or null")
     enrollment = EnrollmentConfig(
-        grant_issuer_key=issuer, challenge_ttl=challenge_ttl, attest_root_certs=roots
+        grant_issuer_key=issuer,
+        challenge_ttl=challenge_ttl,
+        attest_root_certs=roots,
+        attest_root_url=url_raw,
     )
 
     storage_raw = raw.get("storage", {})

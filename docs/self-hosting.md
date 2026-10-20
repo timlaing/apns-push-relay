@@ -59,9 +59,13 @@ server:
 enrollment:
   grant_issuer_key: keys/issuer.pem # Ed25519 (see below)
   challenge_ttl: 600
-  attest_root_certs: # App Attest roots (see below)
-    development: keys/apple-attest-development.pem
-    production: keys/apple-attest-production.pem
+  # App Attest root: downloaded automatically at container startup and
+  # verified against a pinned SHA-256 (see below). Override the URL or the
+  # paths to manage the file yourself.
+  attest_root_url: https://www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem
+  attest_root_certs:
+    development: /var/lib/apns-relay/apple-attest-root.pem
+    production: /var/lib/apns-relay/apple-attest-root.pem
 
 storage:
   database: /var/lib/apns-relay/relay.db
@@ -114,9 +118,9 @@ docker compose -f deploy/docker-compose.yml up -d
 ```
 
 !!! tip "Building from source (alternative)"
-    To run a modified build — or when no release image exists yet — let
-    compose build from the checkout instead (`build:` in
-    `docker-compose.yml`; with no local image, `up` builds automatically):
+To run a modified build — or when no release image exists yet — let
+compose build from the checkout instead (`build:` in
+`docker-compose.yml`; with no local image, `up` builds automatically):
 
     ```sh
     docker compose -f deploy/docker-compose.yml up -d --build
@@ -131,8 +135,8 @@ docker compose exec relay relay status
 ```
 
 !!! note "Staging first"
-    Use Let's Encrypt **staging** while iterating on DNS to avoid rate
-    limits — the compose file documents the switch.
+Use Let's Encrypt **staging** while iterating on DNS to avoid rate
+limits — the compose file documents the switch.
 
 ## 5. Day-two operations
 
@@ -164,9 +168,25 @@ pull && … up -d` for the image path (or `… up -d --build` on a source
 
 ## App Attest roots
 
-Apple publishes development and production App Attestation root
-certificates; download them from Apple's certification authority page and
-point `enrollment.attest_root_certs` at them. Until they are configured the
-relay **fails closed**: `enroll/finish` returns `400
-attestation_unavailable` and no grants are issued — pushes of already-valid
-grants are unaffected.
+Apple publishes a **single** App Attestation Root CA — development and
+production attestations chain to it and are separated by AAGUID (spec
+§2.2) — at a public link on Apple's certificate-authority page (no Apple
+Developer sign-in needed). The container downloads it at startup into
+`/var/lib/apns-relay/apple-attest-root.pem` and verifies it against a
+pinned SHA-256 fingerprint: a tampered response or an Apple rotation fails
+loudly rather than trusting the download. To re-download or update it
+later:
+
+```sh
+docker compose exec relay relay doctor --fetch-roots    # re-download + full checks
+docker compose exec relay relay fetch-roots --if-missing  # the startup step, rerun by hand
+```
+
+Set `enrollment.attest_root_url: null` to manage the file(s) entirely
+yourself — point `enrollment.attest_root_certs` at your own PEMs; `relay
+doctor` validates whichever files are configured (subject, expiry with a
+warning under 90 days, fingerprint) either way. Until a root for an App's
+`attest_environment` resolves the relay **fails closed**: `enroll/finish`
+returns `400 attestation_unavailable` and no grants are issued — pushes of
+already-valid grants are unaffected. The startup download is best-effort:
+an offline boot still serves.

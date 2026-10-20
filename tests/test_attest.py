@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import cbor2
+import httpx
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -22,9 +23,12 @@ from cryptography.x509.oid import NameOID
 from apns_relay.attest import (
     AAGUID_BY_ATTEST_ENV,
     APPLE_ATTEST_NONCE_OID,
+    APPLE_ATTEST_ROOT_SHA256,
+    APPLE_ATTEST_ROOT_URL,
     AttestedCredential,
     AttestError,
     _extract_credential,
+    fetch_attest_root,
     load_attest_root,
     verify_assertion,
     verify_attestation,
@@ -851,3 +855,77 @@ def test_load_attest_root_invalid_pem(tmp_path: Path) -> None:
     path.write_bytes(b"this is not a certificate\n")
     with pytest.raises(ValueError):
         load_attest_root(path)
+
+
+# -- fetch_attest_root: public download, pinned SHA-256 ------------------------
+
+
+def _sha256(cert: x509.Certificate) -> str:
+    return cert.fingerprint(hashes.SHA256()).hex()
+
+
+def test_fetch_attest_root_writes_verified_file(tmp_path: Path) -> None:
+    root = make_root("Fetched Root")
+    dest = tmp_path / "attest-roots" / "root.pem"  # nested: parents auto-created
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=root.pem))
+    cert = fetch_attest_root(
+        "https://example.test/root.pem",
+        dest,
+        expected_sha256=_sha256(root.cert),
+        transport=transport,
+    )
+    assert cert.subject == root.cert.subject
+    assert dest.read_bytes() == root.pem
+
+
+def test_fetch_attest_root_fingerprint_mismatch_preserves_existing(tmp_path: Path) -> None:
+    old = make_root("Pinned Root")
+    served = make_root("Rogue Root")
+    dest = tmp_path / "root.pem"
+    dest.write_bytes(old.pem)
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=served.pem))
+    with pytest.raises(AttestError, match="root_fingerprint_mismatch"):
+        fetch_attest_root(
+            "https://example.test/root.pem",
+            dest,
+            expected_sha256=_sha256(old.cert),
+            transport=transport,
+        )
+    assert dest.read_bytes() == old.pem  # untouched: verify-before-write
+
+
+def test_fetch_attest_root_http_error(tmp_path: Path) -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(404))
+    with pytest.raises(AttestError, match="root_download_failed: HTTP 404"):
+        fetch_attest_root(
+            "https://example.test/root.pem", tmp_path / "root.pem", transport=transport
+        )
+
+
+def test_fetch_attest_root_network_error(tmp_path: Path) -> None:
+    def _unreachable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("no route to host", request=request)
+
+    with pytest.raises(AttestError, match="root_download_failed"):
+        fetch_attest_root(
+            "https://example.test/root.pem",
+            tmp_path / "root.pem",
+            transport=httpx.MockTransport(_unreachable),
+        )
+
+
+def test_fetch_attest_root_invalid_pem(tmp_path: Path) -> None:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(200, content=b"not a certificate")
+    )
+    with pytest.raises(AttestError, match="root_download_invalid"):
+        fetch_attest_root(
+            "https://example.test/root.pem", tmp_path / "root.pem", transport=transport
+        )
+
+
+def test_pinned_apple_root_constants() -> None:
+    """The pin is a 64-char lowercase hex SHA-256; rotating it is a release event."""
+    assert len(APPLE_ATTEST_ROOT_SHA256) == 64
+    assert all(char in "0123456789abcdef" for char in APPLE_ATTEST_ROOT_SHA256)
+    assert APPLE_ATTEST_ROOT_URL.startswith("https://www.apple.com/certificateauthority/")
