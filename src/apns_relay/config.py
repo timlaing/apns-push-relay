@@ -84,6 +84,9 @@ class ServerConfig:
                 raise ConfigError(f"server.{name}: expected bare hostname, got {value!r}")
         if self.public_scheme not in ("https",):
             raise ConfigError("server.public_scheme: only 'https' is supported")
+        if not isinstance(self.swagger_ui, bool):
+            # YAML `swagger_ui: "false"` must not read as enabled (truthy).
+            raise ConfigError(f"server.swagger_ui: expected bool, got {self.swagger_ui!r}")
 
 
 @dataclass(frozen=True)
@@ -340,10 +343,14 @@ def load_config(path: str | Path, *, admin_token: str | None = None) -> RelayCon
         raise ConfigError(f"config: unknown top-level keys {sorted(unknown)}")
 
     server_raw = _expect(raw, "server", dict, "config")
+    unknown = set(server_raw) - {f.name for f in ServerConfig.__dataclass_fields__.values()}
+    if unknown:
+        raise ConfigError(f"server: unknown keys {sorted(unknown)}")
     server = ServerConfig(
         api_domain=_expect(server_raw, "api_domain", str, "server"),
         docs_domain=_expect(server_raw, "docs_domain", str, "server"),
         public_scheme=server_raw.get("public_scheme", "https"),
+        swagger_ui=server_raw.get("swagger_ui", False),
     )
     server.validate()
 

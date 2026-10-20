@@ -154,6 +154,8 @@ def test_top_level_not_mapping(tmp_path: Path, raw: str) -> None:
         (set_in("server", "api_domain", "api test example"), "expected bare hostname"),
         (set_in("server", "api_domain", "api.test/example"), "expected bare hostname"),
         (set_in("server", "public_scheme", "http"), "only 'https' is supported"),
+        (set_in("server", "swagger_ui", "yes"), r"server.swagger_ui: expected bool"),
+        (set_in("server", "bogus", 1), "server: unknown keys"),
         (set_in(None, "bogus", 1), "unknown top-level keys"),
         (drop(None, "enrollment"), "missing required key 'enrollment'"),
         (set_in(None, "enrollment", "x"), "config.enrollment: expected dict"),
@@ -284,12 +286,25 @@ def test_valid_config_resolves_paths_and_defaults(tmp_path: Path) -> None:
 
     assert config.server.api_domain == "api.test.example"
     assert config.server.public_scheme == "https"
+    assert config.server.swagger_ui is False  # opt-in default when omitted
     assert config.enrollment.grant_issuer_key == tmp_path / "keys/issuer.pem"
     assert config.enrollment.challenge_ttl == 600
     assert config.database == tmp_path / "relay.db"
     assert config.app("test-app").display_name == "test-app"
     assert config.app("test-app").registration.callback_required is False
     assert config.app("test-app").grant_ttl == GrantTtlConfig(min=900, max=86400, default=21600)
+
+
+def test_swagger_ui_opt_in_survives_config_loading(tmp_path: Path) -> None:
+    """``server.swagger_ui: true`` must reach ServerConfig through load_config.
+
+    (The field used to be skipped by the loader — only dataclasses.replace()
+    could turn docs on, so the documented config knob silently did nothing.)
+    """
+    raw = valid_config()
+    raw["server"]["swagger_ui"] = True
+    config = load(tmp_path, raw)
+    assert config.server.swagger_ui is True
 
 
 def test_challenge_ttl_boundaries_accepted(tmp_path: Path) -> None:
