@@ -68,6 +68,7 @@ def test_admin_token_shared_across_routes(env) -> None:
         "/admin/tenants",
         "/admin/denylist",
         "/admin/logs",
+        "/admin/doctor",
         "/admin/apps",
         "/admin/keys",
     ):
@@ -374,6 +375,34 @@ def test_logs_since_filter(clock, env) -> None:
     assert future.json() == {"events": []}
 
 
+# -- GET /admin/doctor ---------------------------------------------------------------
+
+
+def test_doctor_runs_the_checks_inside_the_server(env) -> None:
+    response = _get(env, "/admin/doctor")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["failures"] == sum(1 for row in body["checks"] if row["status"] == "fail")
+    assert body["checks"][0]["check"] == "config"
+    assert body["checks"][0]["status"] == "ok"
+    assert str(env.state.config_path) in body["checks"][0]["detail"]
+    by_name = {row["check"]: row["status"] for row in body["checks"]}
+    assert by_name["apns-keys"] == "ok"  # keys are on disk next to the config
+    assert by_name["issuer-key"] == "ok"
+    # minted roots: expiry ok, pinned-root warn (a fixture root is not Apple's)
+    for environment in ("production", "development"):
+        statuses = [
+            row["status"] for row in body["checks"] if row["check"] == f"attest-root[{environment}]"
+        ]
+        assert statuses == ["ok", "warn"]
+
+
+def test_doctor_fetch_roots_defaults_off(env) -> None:
+    response = _get(env, "/admin/doctor")
+    assert response.status_code == 200
+    assert all(not row["check"].startswith("fetch-root") for row in response.json()["checks"])
+
+
 # -- config-file app management (/admin/apps, /admin/keys) -----------------------
 
 
@@ -532,6 +561,7 @@ def test_admin_responses_never_contain_secret_material(env) -> None:
         f"/admin/tenants/verify?tenant={TENANT_ID}",
         "/admin/denylist",
         "/admin/logs",
+        "/admin/doctor",
         "/admin/apps",
         "/admin/keys",
     ]

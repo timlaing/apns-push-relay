@@ -99,14 +99,16 @@ at `keys/AuthKey_<key_id>.p8` next to the config file. Keep it all
 ## 3. Validate before starting
 
 ```sh
-docker compose -f deploy/docker-compose.yml run --rm relay relay doctor
+docker compose -f deploy/docker-compose.yml run --rm relay relay doctor --offline
 ```
 
-`relay doctor` is fully offline and checks: config schema, every `.p8`
-(P-256 parse + JWT pre-signature), the issuer key (Ed25519), App Attest
-roots, `RELAY_MASTER_SECRET`, and database writability. The container
-entrypoint runs the same check on **every** start — a broken deploy fails
-fast instead of at the first push.
+`relay doctor --offline` checks the local files: config schema, every
+`.p8` (P-256 parse + JWT pre-signature), the issuer key (Ed25519), App
+Attest roots, `RELAY_MASTER_SECRET`, and database writability. The
+container entrypoint runs the same check on **every** start — a broken
+deploy fails fast instead of at the first push. Once the stack is up,
+`relay doctor` (without `--offline`) runs the same checks through the
+admin API, against the running server itself.
 
 ## 4. Up, and TLS
 
@@ -171,8 +173,9 @@ docker compose exec relay relay metrics             # metric table (--json / --p
   comments and writing a `.bak`. Run them inside the container
   (`docker compose exec relay relay app add`; the CLI only makes API
   calls, so no elevated user is needed) and then
-  `docker compose restart relay` (config is loaded at boot; doctor
-  re-runs there). From the host, export `RELAY_ADMIN_TOKEN` and point
+  `docker compose restart relay` (config is loaded at boot; the
+  entrypoint re-runs the offline doctor on every start). From the host,
+  export `RELAY_ADMIN_TOKEN` and point
   `RELAY_API_URL` at `http://127.0.0.1:8000` to drive the same
   commands.
 - **Interactive API docs**: set `swagger_ui: true` under `server:` in

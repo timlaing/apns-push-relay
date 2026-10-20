@@ -15,7 +15,8 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 
-from apns_relay.app import _sweep_loop, create_app, load_issuer_key
+from apns_relay.app import _sweep_loop, create_app
+from apns_relay.checks import load_issuer_key
 from apns_relay.config import ConfigError, RelayConfig
 from apns_relay.store import Store
 from tests.conftest import (

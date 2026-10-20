@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, Depends, Query, Request
 
 from . import configedit
+from .checks import run_checks
 from .config import ConfigError
 from .errors import BadRequest, Conflict, NotFound, Unauthorized
 from .models import AdminAppEntry, AdminDenylistEntry, AdminReissueRequest, AdminTenantRef
@@ -145,6 +146,20 @@ def admin_router(state: AppState) -> APIRouter:
         errors: bool = Query(default=False),
     ) -> dict:
         return {"events": state.events.recent(since=since, errors_only=errors)}
+
+    @router.get("/doctor", dependencies=[admin])
+    async def doctor(fetch_roots: bool = Query(default=False)) -> dict:
+        """The pre-flight checks, run inside this process (same shape as
+        ``relay doctor --json``: failures count + ordered checks)."""
+        rows = run_checks(
+            state.config,
+            config_path=state.config_path,
+            fetch_roots=fetch_roots,
+        )
+        return {
+            "failures": sum(1 for row in rows if row["status"] == "fail"),
+            "checks": rows,
+        }
 
     # -- config-file app management (the file is the source of truth; the
     # running state picks changes up on restart) -----------------------------

@@ -215,8 +215,11 @@ def test_docs_domain_baked_into_the_image() -> None:
 
 
 def test_entrypoint_runs_doctor_before_exec() -> None:
+    """Nothing listens during the pre-flight, so the gate is the offline
+    check (the API-mode doctor needs the running server)."""
     script = (DEPLOY / "relay-entrypoint.sh").read_text()
     assert "set -eu" in script
+    assert "relay doctor --offline" in script
     assert script.index("relay doctor") < script.index('exec "$@"')
 
 
@@ -225,7 +228,7 @@ def test_entrypoint_fetches_missing_roots_before_doctor() -> None:
     script = (DEPLOY / "relay-entrypoint.sh").read_text()
     commands = [line for line in script.splitlines() if line.startswith("relay ")]
     assert commands[0].startswith("relay fetch-roots --if-missing ||")
-    assert commands[1] == "relay doctor"
+    assert commands[1] == "relay doctor --offline"
 
 
 # -- config.yaml.example --------------------------------------------------------

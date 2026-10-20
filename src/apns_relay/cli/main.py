@@ -1,12 +1,13 @@
 """``relay`` — admin CLI for the APNs push relay (PLAN §5).
 
 Typer + rich. Commands hit the internal admin API (``RELAY_API_URL``, default
-``http://127.0.0.1:8000``) with ``RELAY_ADMIN_TOKEN``; ``relay doctor`` is
-fully offline (config + keys + JWT pre-sign pre-flight) and is what the
-container entrypoint runs before serving. ``relay monitor`` renders a live
-dashboard; ``relay app add/remove`` edits ``config.yaml`` offline. Output is
-counts, statuses and machine codes only — never tokens beyond a freshly
-minted ``reissue``. Every error is followed by the command's help.
+``http://127.0.0.1:8000``) with ``RELAY_ADMIN_TOKEN``; ``relay doctor``
+verifies the running server through the admin API (``--offline`` checks a
+machine's own files — the container-entrypoint pre-flight, before anything
+listens). ``relay monitor`` renders a live dashboard; ``relay app add/remove``
+edits ``config.yaml`` via the admin API. Output is counts, statuses and
+machine codes only — never tokens beyond a freshly minted ``reissue``.
+Every error is followed by the command's help.
 """
 
 from __future__ import annotations
@@ -25,7 +26,6 @@ from typing import Any
 
 import httpx
 import typer
-from cryptography.hazmat.primitives import hashes
 from rich import box
 from rich.console import Console, Group
 from rich.live import Live
@@ -35,13 +35,9 @@ from rich.table import Table
 from rich.text import Text
 from typer import _click as _vendored_click  # typer >= 0.27 vendors click
 
-from .. import attest as attest_mod
-from ..apns import KeyRegistry
-from ..app import DEFAULT_CONFIG, load_issuer_key
-from ..attest import AttestError, fetch_attest_root, load_attest_root
-from ..config import ConfigError, RelayConfig, load_config
-from ..signing import sha256hex
-from ..store import Store
+from ..app import DEFAULT_CONFIG
+from ..checks import fetch_attest_roots, run_checks
+from ..config import ConfigError, load_config
 
 DEFAULT_API_URL = "http://127.0.0.1:8000"
 
@@ -192,126 +188,7 @@ def _call(
         return response.text
 
 
-# -- doctor (offline) ---------------------------------------------------------
-
-
-def _fetch_attest_roots(
-    config: RelayConfig,
-    transport: httpx.BaseTransport | None,
-    *,
-    only_missing: bool,
-    ok: Any,
-    fail: Any,
-    note: Any,
-) -> int:
-    """Download the App Attest root into every configured path.
-
-    With ``only_missing`` (container startup) existing files are left alone —
-    the boot never depends on the network. Otherwise each path is
-    re-downloaded (``relay fetch-roots`` / ``relay doctor --fetch-roots`` =
-    update). Returns the number of failures.
-    """
-    url = config.enrollment.attest_root_url
-    if not url:
-        fail("fetch-roots", "enrollment.attest_root_url is not set")
-        return 1
-    failures = 0
-    seen: set[Path] = set()
-    for environment, root_path in sorted(config.enrollment.attest_root_certs.items()):
-        if root_path in seen:
-            continue  # environments may share one root file — fetch it once
-        seen.add(root_path)
-        if only_missing and root_path.exists():
-            note(f"fetch-root[{environment}]", f"{root_path} present — skipped")
-            continue
-        try:
-            root = fetch_attest_root(url, root_path, transport=transport)
-        except AttestError as exc:
-            failures += 1
-            fail(f"fetch-root[{environment}]", f"{root_path}: {exc}")
-            continue
-        ok(f"fetch-root[{environment}]", f"{root_path} ({root.subject.rfc4514_string()})")
-    return failures
-
-
-def _doctor_results(
-    config: RelayConfig, transport: httpx.BaseTransport | None, *, fetch_roots: bool
-) -> list[dict[str, str]]:
-    """Run every offline check; rows are ``{"check", "status", "detail"}``."""
-    rows: list[dict[str, str]] = []
-
-    def ok(label: str, detail: str) -> None:
-        rows.append({"check": label, "status": "ok", "detail": detail})
-
-    def fail(label: str, detail: str) -> None:
-        rows.append({"check": label, "status": "fail", "detail": detail})
-
-    def warn(label: str, detail: str) -> None:
-        rows.append({"check": label, "status": "warn", "detail": detail})
-
-    def note(label: str, detail: str) -> None:
-        rows.append({"check": label, "status": "note", "detail": detail})
-
-    if fetch_roots:
-        _fetch_attest_roots(config, transport, only_missing=False, ok=ok, fail=fail, note=note)
-
-    try:
-        registry = KeyRegistry(config.enabled_apps)
-        del registry
-        ok("apns-keys", f"{len(config.enabled_apps)} key(s), JWT pre-signed at boot")
-    except Exception as exc:  # report any key failure, keep checking
-        fail("apns-keys", str(exc))
-
-    try:
-        issuer = load_issuer_key(config.enrollment.grant_issuer_key)
-        issuer_id = sha256hex(issuer.public_key().public_bytes_raw())[:16]
-        ok("issuer-key", f"Ed25519 id={issuer_id}")
-    except ConfigError as exc:
-        fail("issuer-key", str(exc))
-
-    if not config.enrollment.attest_root_certs:
-        note(
-            "attest-roots",
-            "none configured — enroll/finish fails closed until App Attest roots are supplied (M4)",
-        )
-    for environment, root_path in sorted(config.enrollment.attest_root_certs.items()):
-        try:
-            root = load_attest_root(root_path)
-        except (OSError, ValueError) as exc:
-            fail(f"attest-root[{environment}]", str(exc))
-            continue
-        fingerprint = root.fingerprint(hashes.SHA256()).hex()
-        days_left = (root.not_valid_after_utc - datetime.now(UTC)).days
-        detail = (
-            f"{root_path} ({root.subject.rfc4514_string()};"
-            f" sha256={fingerprint[:16]}; expires {root.not_valid_after_utc.date()})"
-        )
-        if days_left < 0:
-            fail(f"attest-root[{environment}]", f"{detail} — EXPIRED")
-        elif days_left < 90:
-            warn(f"attest-root[{environment}]", f"{detail} — expires in {days_left}d")
-        else:
-            ok(f"attest-root[{environment}]", detail)
-        if fingerprint != attest_mod.APPLE_ATTEST_ROOT_SHA256:
-            warn(
-                f"attest-root[{environment}]",
-                "sha256 differs from the pinned Apple root — fine if this is"
-                " your own root; after an Apple rotation, verify the new"
-                " fingerprint and update APPLE_ATTEST_ROOT_SHA256 in a release",
-            )
-
-    secret = os.environ.get("RELAY_MASTER_SECRET", "")
-    if len(secret) >= 32:
-        ok("master-secret", "present (>=32 chars)")
-    else:
-        fail("master-secret", "RELAY_MASTER_SECRET missing or shorter than 32 characters")
-
-    try:
-        Store(config.database)
-        ok("database", str(config.database))
-    except Exception as exc:
-        fail("database", str(exc))
-    return rows
+# -- doctor / fetch-roots ------------------------------------------------------
 
 
 def _doctor_section(rows: list[dict[str, str]]) -> Panel:
@@ -337,24 +214,32 @@ def doctor(
     fetch_roots: bool = typer.Option(
         False, "--fetch-roots", help="re-download the App Attest root(s) first"
     ),
+    offline: bool = typer.Option(
+        False, "--offline", help="check this machine's files instead of the running server"
+    ),
     json_out: bool = typer.Option(False, "--json", help="machine-readable JSON"),
 ) -> None:
     """Verify the relay is configured correctly before it serves traffic."""
     del ctx
-    config_path = str(_config_path())
-    try:
-        config = load_config(config_path, admin_token=os.environ.get("RELAY_ADMIN_TOKEN"))
-    except ConfigError as exc:
-        rows = [{"check": "config", "status": "fail", "detail": str(exc)}]
+    if offline:
+        config_path = _config_path()
+        try:
+            config = load_config(config_path, admin_token=os.environ.get("RELAY_ADMIN_TOKEN"))
+        except ConfigError as exc:
+            rows: list[dict[str, str]] = [{"check": "config", "status": "fail", "detail": str(exc)}]
+        else:
+            rows = run_checks(
+                config, config_path=config_path, fetch_roots=fetch_roots, transport=_TRANSPORT
+            )
     else:
-        rows = [
-            {
-                "check": "config",
-                "status": "ok",
-                "detail": f"{len(config.apps)} app(s) from {config_path}",
-            },
-            *_doctor_results(config, _TRANSPORT, fetch_roots=fetch_roots),
-        ]
+        with _api_client(_TRANSPORT) as client:
+            payload = _call(
+                client,
+                "GET",
+                "/admin/doctor",
+                params={"fetch_roots": str(fetch_roots).lower()},
+            )
+        rows = payload["checks"]
     failures = sum(1 for row in rows if row["status"] == "fail")
     if json_out:
         out.print(
@@ -400,7 +285,7 @@ def fetch_roots(
     if not config.enrollment.attest_root_certs:
         out.print("note  fetch-roots: no attest_root_certs configured — nothing to fetch")
         return
-    failures = _fetch_attest_roots(
+    failures = fetch_attest_roots(
         config, _TRANSPORT, only_missing=if_missing, ok=ok, fail=fail, note=note
     )
     if failures:

@@ -59,7 +59,8 @@ docker compose -f deploy/docker-compose.yml up -d
 ```
 
 The stack is nginx + certbot (automatic TLS renewal) + the relay, with
-`relay doctor` run as a pre-flight before the API serves traffic. See
+`relay doctor --offline` run as a pre-flight before the API serves
+traffic. See
 [`deploy/README.md`](deploy/README.md) for the full walkthrough.
 
 ## CLI
@@ -67,7 +68,7 @@ The stack is nginx + certbot (automatic TLS renewal) + the relay, with
 `relay` ships in the container (also installable locally via `uv sync`):
 
 ```sh
-relay doctor                  # offline config/keys/secrets validation
+relay doctor                  # checks the running server; --offline = local files
 relay version                 # package version
 relay status                  # version, health, quota, metric snapshot
 relay monitor --interval 5    # live dashboard (status, quotas, recent requests)
