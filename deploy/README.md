@@ -36,6 +36,24 @@ watcher), so the two containers never touch each other's runtime.
 
 Check status: `docker compose ps`, `docker compose logs -f certbot nginx`.
 
+## Local bring-up (as if it were on a VPS)
+
+The full stack runs on a workstation exactly as on a server. Resolve the
+domains on the machine and start everything:
+
+```sh
+echo '127.0.0.1 api.push.example.org push.example.org' | sudo tee -a /etc/hosts
+docker compose up -d
+```
+
+nginx generates a self-signed placeholder certificate on first boot and
+serves HTTPS immediately; without public reachability certbot cannot
+solve the ACME challenge and keeps retrying (harmless — see its logs).
+Everything else behaves as on a server: port 80 answers ACME and
+redirects to HTTPS, 443 serves the API, `/admin` 404s at the edge, and
+`swagger_ui: true` serves `/docs`. Accept the browser's certificate
+warning, or check with `curl -k https://api.push.example.org/health`.
+
 ## Operations
 
 - **State** lives on the `relay-data` volume (`relay.db`, SQLite WAL) — the

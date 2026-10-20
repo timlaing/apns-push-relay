@@ -153,8 +153,9 @@ docker compose exec relay relay denylist add <jti|sha256:…> --expires 24h
 docker compose exec relay relay metrics             # Prometheus text
 ```
 
-- The admin API listens on the internal network only: **nginx returns 404
-  for `/admin`**.
+- The admin API listens on the internal network only — the relay's own port
+  additionally binds host-loopback (pre-nginx CLI/Swagger), never LAN-facing:
+  **nginx returns 404 for `/admin`**.
 - **Adding or removing apps**: `relay app add` (interactively picks from
   `keys/AuthKey_*.p8`) and `relay app remove` edit `config.yaml` offline,
   preserving comments and writing a `.bak`. The compose config mount is

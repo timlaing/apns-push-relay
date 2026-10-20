@@ -91,10 +91,12 @@ def test_relay_secrets_injected_via_environment() -> None:
     assert env["RELAY_MASTER_SECRET"].startswith("${RELAY_MASTER_SECRET")
 
 
-def test_nginx_publishes_80_and_443_relay_stays_internal() -> None:
+def test_nginx_publishes_80_and_443_relay_is_loopback_only() -> None:
+    """nginx is the public edge; the relay binds host-loopback only — enough
+    for the CLI/Swagger before nginx exists, never LAN/Internet-facing."""
     compose = _compose()
     assert {"80:80", "443:443"} <= set(compose["services"]["nginx"]["ports"])
-    assert "ports" not in compose["services"]["relay"]
+    assert set(compose["services"]["relay"]["ports"]) == {"127.0.0.1:8000:8000"}
 
 
 def test_relay_service_prefers_the_published_image() -> None:

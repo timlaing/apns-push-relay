@@ -85,6 +85,11 @@ services:
       RELAY_MASTER_SECRET: ${RELAY_MASTER_SECRET:?set RELAY_MASTER_SECRET in .env}
       # RELAY_CONFIG / RELAY_DATA_DIR default to /etc/apns-relay/config.yaml
       # and /var/lib/apns-relay in the image.
+    ports:
+      # Host loopback only: lets you hit the API/Swagger locally (and run the
+      # CLI against it) before nginx exists. LAN exposure stays nginx's job
+      # (/admin is never proxied; token-protected either way).
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./config.yaml:/etc/apns-relay/config.yaml:ro
       - ./keys:/etc/apns-relay/keys:ro
