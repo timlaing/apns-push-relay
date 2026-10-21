@@ -15,6 +15,12 @@ name: apns-push-relay
 services:
   nginx:
     image: nginx:1.27-alpine
+    # Built from deploy/nginx/ — the stock image plus openssl for the
+    # first-boot placeholder certificate (the stock image ships none).
+    # First run: `docker compose up -d --build`; later runs reuse the
+    # local image.
+    build:
+      context: ./nginx
     restart: unless-stopped
     depends_on:
       - relay
@@ -113,6 +119,12 @@ services:
       - ./:/etc/apns-relay
       - ./keys:/etc/apns-relay/keys:ro
       - relay-data:/var/lib/apns-relay
+    # Read-only root filesystem: the relay writes only to its data volume
+    # (SQLite, attest roots) and the config mount above; /tmp is a tmpfs
+    # for scratch space.
+    read_only: true
+    tmpfs:
+      - /tmp
     networks:
       - relay-net
 

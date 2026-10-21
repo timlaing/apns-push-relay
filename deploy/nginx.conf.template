@@ -23,10 +23,28 @@ map $http_x_forwarded_proto $force_https {
     https   ${FORCE_HTTPS};
 }
 
+# Per-IP rate limiting keys on the LAST X-Forwarded-For entry, so this edge
+# is the hop that must name the true client. ${FORCE_HTTPS}=1 (direct
+# clients): append our hop as usual. ${FORCE_HTTPS}=0 (behind a
+# TLS-terminating proxy): pass the outer proxy's list through untouched — it
+# already appended the client address, and appending again would collapse
+# every client onto the proxy's address. The outer proxy must overwrite or
+# append the real client address; plain pass-through of a client-supplied
+# header would let callers pick their own limit key.
+map "${FORCE_HTTPS}" $xff_value {
+    0       $http_x_forwarded_for;
+    default $proxy_add_x_forwarded_for;
+}
+
 server {
     listen 80;
     server_name _;
     server_tokens off;
+
+    # Same 16k cap as port 443: in behind-proxy mode (FORCE_HTTPS=0) this
+    # port carries the real traffic, so the limit must not live on 443
+    # alone.
+    client_max_body_size 16k;
 
     # ACME webroot challenge for certbot.
     location /.well-known/acme-challenge/ {
@@ -48,7 +66,7 @@ server {
         limit_req zone=relaylimit burst=60 nodelay;
         proxy_pass http://relay:8001;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $xff_value;
         proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
     }
 }
@@ -81,7 +99,7 @@ server {
         limit_req zone=relaylimit burst=60 nodelay;
         proxy_pass http://relay:8001;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $xff_value;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
@@ -89,7 +107,7 @@ server {
         limit_req zone=relaylimit burst=60 nodelay;
         proxy_pass http://relay:8001;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $xff_value;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
@@ -97,7 +115,7 @@ server {
         limit_req zone=relaylimit burst=60 nodelay;
         proxy_pass http://relay:8001;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $xff_value;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
@@ -107,21 +125,21 @@ server {
         limit_req zone=relaylimit burst=60 nodelay;
         proxy_pass http://relay:8001;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $xff_value;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location = /health {
         proxy_pass http://relay:8001;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $xff_value;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location = /metrics {
         proxy_pass http://relay:8001;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $xff_value;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
@@ -131,7 +149,7 @@ server {
     location / {
         proxy_pass http://relay:8001;
         proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $xff_value;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }

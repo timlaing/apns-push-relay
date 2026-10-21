@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from apns_relay.callback import (
+    MAX_CALLBACK_BODY,
     CallbackError,
     callback_host_matches_id,
     validate_callback_url,
@@ -286,3 +287,16 @@ async def test_verify_callback_own_client_created_and_closed(
     assert created[0].is_closed  # finally: await http.aclose() ran
     assert kwargs_seen[0]["timeout"] == 10.0
     assert isinstance(kwargs_seen[0]["verify"], ssl.SSLContext)
+
+
+async def test_verify_callback_oversized_response_rejected() -> None:
+    """The response body is read with a hard cap: a hostile callback cannot
+    stream gigabytes at the relay within the timeout."""
+    big = {"nonce": "n", "pad": "x" * (MAX_CALLBACK_BODY + 1)}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=big)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    ok = await verify_callback("https://hooks.example.com/hook", TENANT, "nonce-1", client=client)
+    assert ok is False

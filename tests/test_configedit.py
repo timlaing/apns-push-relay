@@ -6,6 +6,7 @@ happy paths must preserve operator comments and write a backup.
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,27 @@ def test_save_document_writes_backup(tmp_path: Path) -> None:
     configedit.save_document(config, document)
     assert (tmp_path / "config.yaml.bak").is_file()
     assert "second" in config.read_text()
+
+
+def test_save_document_failure_leaves_config_intact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A crash mid-write must never truncate the live config: the dump goes
+    to a temp file renamed into place, so a failing dump leaves the original
+    untouched and no stray temp file behind."""
+    config = _config(tmp_path)
+    before = config.read_text()
+
+    class _Boom:
+        def dump(self, document: object, handle: io.TextIOBase) -> None:
+            handle.write("half-written")  # partial output, then the crash
+            raise RuntimeError("disk died")
+
+    monkeypatch.setattr(configedit, "_yaml", lambda: _Boom())
+    with pytest.raises(RuntimeError, match="disk died"):
+        configedit.save_document(config, {"apps": []})
+    assert config.read_text() == before
+    assert not (tmp_path / "config.yaml.tmp").exists()
 
 
 # -- key discovery --------------------------------------------------------------

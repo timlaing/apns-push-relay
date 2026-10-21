@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Security
+
+- **The edge caps request bodies on port 80 too**: the 16 kB limit
+  previously lived only in the 443 server block, while port 80 carries the
+  real traffic in behind-proxy mode (`FORCE_HTTPS=0`).
+- **Behind a TLS-terminating proxy, per-IP rate limiting keys on the real
+  client again**: the edge passes the outer proxy's `X-Forwarded-For`
+  through instead of appending its own hop, which collapsed every client
+  onto the proxy's address. The outer proxy must overwrite or append the
+  true client address.
+- **Callback responses are read with a 4 kB cap** — a hostile ownership
+  callback can no longer stream gigabytes at the relay within the timeout.
+- **base64url decoding is alphabet-strict** for request signatures, grant
+  claims and signatures, and tenant public keys: characters outside the
+  alphabet were previously discarded, so one signature or grant had many
+  valid encodings.
+- **The relay container runs with a read-only root filesystem** — writes
+  go to the data volume and the config mount; `/tmp` is a tmpfs.
+
+### Fixed
+
+- Admin query strings (which carry tenant ids) no longer reach the
+  container logs: uvicorn's access log is off; the app's own event log and
+  metrics keep the operational picture.
+- `config.yaml` edits are atomic: the edit dumps to a temp file and renames
+  it into place, so a crash mid-write can no longer leave a truncated
+  config.
+- The CLI warns when `RELAY_API_URL` would send the admin token over plain
+  HTTP to anything beyond loopback.
+
+### Changed
+
+- **The nginx service is built from `deploy/nginx/`** (nginx:alpine plus
+  openssl), so first-boot placeholder-certificate generation no longer
+  installs packages from the network; the entrypoint fails loudly if
+  openssl is missing. First run: `docker compose build nginx`.
+- **`uv` is pinned by version in the image build** for reproducible builds.
+
 ## [0.4.0] - 2026-10-21
 
 ### Changed

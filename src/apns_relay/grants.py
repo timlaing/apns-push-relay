@@ -20,17 +20,13 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 from .config import AppKeyConfig
-from .signing import sha256hex
+from .signing import b64u_decode, sha256hex
 
 GRANT_VERSION = "v1"
 
 
 def _b64u(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
-
-
-def _unb64u(value: str) -> bytes:
-    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
 
 
 def canonical_claims(claims: dict) -> bytes:
@@ -81,7 +77,7 @@ def parse_grant(grant: str, issuer_public: Ed25519PublicKey) -> dict:
     if len(parts) != 3 or parts[0] != GRANT_VERSION:
         raise GrantError("malformed_grant")
     try:
-        raw_claims, raw_sig = _unb64u(parts[1]), _unb64u(parts[2])
+        raw_claims, raw_sig = b64u_decode(parts[1]), b64u_decode(parts[2])
     except (ValueError, TypeError):
         raise GrantError("malformed_grant") from None
     try:

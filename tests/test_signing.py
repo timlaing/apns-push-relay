@@ -152,6 +152,21 @@ def test_verify_garbage_b64_signature(keypair: tuple[Ed25519PrivateKey, str], cl
     )
 
 
+def test_verify_rejects_malleable_signature_encoding(
+    keypair: tuple[Ed25519PrivateKey, str], clock: Clock
+) -> None:
+    """Decoding is alphabet-strict: characters outside the base64 alphabet
+    used to be silently discarded, giving one signature many encodings."""
+    private, public_b64 = keypair
+    ts = str(int(clock.t))
+    signature = sign(private, TOKEN, "POST", PATH, ts, NONCE, BODY)
+    malleable = f"{signature[:8]} {signature[8:]}"  # a discarded space
+    assert (
+        verify(public_key_from_b64(public_b64), TOKEN, "POST", PATH, ts, NONCE, BODY, malleable)
+        == "invalid_signature"
+    )
+
+
 def test_verify_wrong_key(keypair: tuple[Ed25519PrivateKey, str], clock: Clock) -> None:
     private, _ = keypair
     _, other_b64 = generate_keypair()

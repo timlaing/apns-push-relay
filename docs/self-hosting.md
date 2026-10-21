@@ -111,18 +111,20 @@ admin API, against the running server itself.
 
 ## 4. Up, and TLS
 
-Pull the published image and start — no build toolchain needed beyond
-Docker:
+Pull the published relay image, build the local nginx edge image (it adds
+openssl for the first-boot placeholder certificate), and start — no build
+toolchain needed beyond Docker:
 
 ```sh
-docker compose -f deploy/docker-compose.yml pull
+docker compose -f deploy/docker-compose.yml pull relay
+docker compose -f deploy/docker-compose.yml build nginx
 docker compose -f deploy/docker-compose.yml up -d
 ```
 
 !!! tip "Building from source (alternative)"
     To run a modified build — or when no release image exists yet — let
     compose build from the checkout instead (`build:` in
-    `docker-compose.yml`; with no local image, `up` builds automatically):
+    `docker-compose.yml`; `up --build` rebuilds everything):
 
     ```sh
     docker compose -f deploy/docker-compose.yml up -d --build
@@ -148,7 +150,10 @@ docker compose exec relay relay status
     service is scaled to zero in this mode — no ACME client or renewal
     loop runs, and `LETSENCRYPT_EMAIL` is only required when it runs.
     Plain port-80 requests still redirect, and `/admin` still 404s at the
-    edge. Forward the original `Host` header from the upstream proxy.
+    edge. Forward the original `Host` header from the upstream proxy, and
+    have it overwrite or append the real client address in
+    `X-Forwarded-For` — in this mode nginx passes that list through
+    untouched, and per-IP rate limiting keys on its last entry.
 
 ## 5. Day-two operations
 
@@ -190,8 +195,8 @@ docker compose exec relay relay metrics             # metric table (--json / --p
 - Back up `relay.db` (named volume) — it is the only state; it contains
   digests and blind indexes, never raw tokens or payloads.
 - Upgrades: `git pull && docker compose -f deploy/docker-compose.yml
-pull && … up -d` for the image path (or `… up -d --build` on a source
-  build); `docker compose pull` tracks `latest` — GHCR also publishes
+pull relay && … up -d` for the image path (or `… up -d --build` on a source
+  build); `pull relay` tracks `latest` — GHCR also publishes
   per-version and sha tags if you prefer to pin. Doctor
   pre-flight gates the swap.
 

@@ -3,7 +3,9 @@
 
 FROM python:3.14-slim
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# uv pinned by version (it also generates the committed lockfile) so image
+# builds are reproducible; bump deliberately.
+COPY --from=ghcr.io/astral-sh/uv:0.13.1 /uv /usr/local/bin/uv
 
 # README.md is referenced by pyproject.toml (readme=) and must be in the
 # build context. uv.lock is committed: dependencies install from the lock

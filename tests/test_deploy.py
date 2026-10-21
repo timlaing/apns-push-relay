@@ -99,8 +99,29 @@ def test_rate_limit_zone_declared_and_applied_to_v1() -> None:
     assert f"limit_req zone={zone} " in v1
 
 
-def test_request_body_capped_at_16k() -> None:
-    assert "client_max_body_size 16k;" in _nginx()
+def test_request_body_capped_at_16k_on_both_ports() -> None:
+    """The cap lives in BOTH server blocks: port 80 proxies the real traffic
+    in behind-proxy mode (FORCE_HTTPS=0), not just the ACME challenge."""
+    servers = re.findall(r"server \{.*?\n\}", _nginx(), re.S)
+    assert len(servers) == 2
+    for server in servers:
+        assert "client_max_body_size 16k;" in server
+
+
+def test_forwarded_for_names_the_real_client() -> None:
+    """Rate limiting keys on the LAST X-Forwarded-For entry. Direct mode
+    (FORCE_HTTPS=1) this edge appends the client address; behind a TLS
+    proxy (FORCE_HTTPS=0) the outer proxy already appended it, so the edge
+    passes its list through instead of collapsing every client onto the
+    proxy's address."""
+    conf = _nginx()
+    assert re.search(
+        r'map "\$\{FORCE_HTTPS\}" \$xff_value \{[^}]*0\s+\$http_x_forwarded_for;'
+        r"[^}]*default\s+\$proxy_add_x_forwarded_for;",
+        conf,
+    ), "map must switch the X-Forwarded-For source on ${FORCE_HTTPS}"
+    headers = re.findall(r"proxy_set_header X-Forwarded-For ([^;]+);", conf)
+    assert headers and set(headers) == {"$xff_value"}
 
 
 def test_v1_proxies_to_relay_internal_port() -> None:
@@ -236,6 +257,26 @@ def test_entrypoint_fetches_missing_roots_before_doctor() -> None:
     commands = [line for line in script.splitlines() if line.startswith("relay ")]
     assert commands[0].startswith("relay fetch-roots --if-missing ||")
     assert commands[1] == "relay doctor --offline"
+
+
+def test_nginx_image_bakes_in_openssl() -> None:
+    """First-boot placeholder generation needs openssl; it must ship in the
+    image (compose builds deploy/nginx/) instead of being installed from the
+    network mid-boot."""
+    dockerfile = (DEPLOY / "nginx" / "Dockerfile").read_text()
+    assert "FROM nginx:1.27-alpine" in dockerfile
+    assert "apk add --no-cache openssl" in dockerfile
+    assert _compose()["services"]["nginx"]["build"] == {"context": "./nginx"}
+    script = (DEPLOY / "nginx-entrypoint.sh").read_text()
+    assert "apk add" not in script  # never install packages at runtime
+
+
+def test_relay_container_root_filesystem_is_read_only() -> None:
+    """The relay writes only to its data volume and the config mount; the
+    root filesystem stays read-only, with a tmpfs /tmp for scratch."""
+    relay = _compose()["services"]["relay"]
+    assert relay["read_only"] is True
+    assert relay["tmpfs"] == ["/tmp"]  # noqa: S108 - a compose config value, not a temp path
 
 
 # -- config.yaml.example --------------------------------------------------------

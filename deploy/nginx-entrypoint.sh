@@ -33,9 +33,12 @@ if [ -f "${cert_dir}/fullchain.pem" ]; then
     link_certificate
 else
     echo "nginx-entrypoint: no certificate for ${API_DOMAIN}; generating self-signed placeholder"
-    # The nginx alpine image ships no openssl binary; install it just-in-time
-    # (only needed on first boot, before the first real certificate exists).
-    command -v openssl >/dev/null 2>&1 || apk add --no-cache openssl
+    # openssl ships in this image (deploy/nginx/Dockerfile). Fail loudly
+    # rather than reaching for the network mid-boot if it is missing.
+    command -v openssl >/dev/null 2>&1 || {
+        echo "nginx-entrypoint: openssl missing - rebuild the nginx image (deploy/nginx)" >&2
+        exit 1
+    }
     openssl req -x509 -nodes -newkey rsa:2048 -days 2 \
         -subj "/CN=${API_DOMAIN}" \
         -addext "subjectAltName=DNS:${API_DOMAIN}" \

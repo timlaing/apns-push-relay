@@ -180,6 +180,17 @@ def test_parse_bad_b64_part(issuer: tuple[Ed25519PrivateKey, Any]) -> None:
     assert exc.value.code == "malformed_grant"
 
 
+def test_parse_rejects_malleable_encoding(issuer: tuple[Ed25519PrivateKey, Any]) -> None:
+    """Decoding is alphabet-strict: a junk character inside a segment used
+    to be silently discarded, so one grant had many valid encodings."""
+    private, public = issuer
+    version, claims, sig = mint(private).split(".")
+    malleable = f"{version}.{claims[:8]} {claims[8:]}.{sig}"
+    with pytest.raises(GrantError) as exc:
+        parse_grant(malleable, public)
+    assert exc.value.code == "malformed_grant"
+
+
 def test_parse_bad_signature(issuer: tuple[Ed25519PrivateKey, Any]) -> None:
     _, public = issuer
     other_private = Ed25519PrivateKey.generate()

@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import hmac
 import ipaddress
+import json
 import socket
 import ssl
 from urllib.parse import urlsplit
 
 import httpx
+
+MAX_CALLBACK_BODY = 4096  # bytes; a nonce echo is tiny, anything bigger is hostile
 
 
 class CallbackError(ValueError):
@@ -103,27 +106,34 @@ async def verify_callback(
     own = client is None
     http = client or httpx.AsyncClient(timeout=timeout, verify=_pinned_context(host))
     try:
-        # The URL host is the pinned IP, but TLS must present the *hostname*:
-        # httpcore uses the sni_hostname extension for both SNI and the
-        # check_hostname verification, so a hostname-issued certificate
-        # validates while the connection still goes to the resolved address.
-        resp = await http.post(
+        # Stream the response and stop reading past MAX_CALLBACK_BODY: a
+        # hostile callback must not be able to stream gigabytes at the relay
+        # within the timeout. The URL host is the pinned IP, but TLS must
+        # present the *hostname*: httpcore uses the sni_hostname extension
+        # for both SNI and the check_hostname verification, so a
+        # hostname-issued certificate validates while the connection still
+        # goes to the resolved address.
+        async with http.stream(
+            "POST",
             str(pinned),
             json=payload,
             headers=headers,
             extensions={"sni_hostname": host},
-        )
+        ) as response:
+            if response.status_code != 200:
+                return False  # non-2xx; 204 included (an empty body proves nothing)
+            raw = bytearray()
+            async for chunk in response.aiter_bytes():
+                raw += chunk
+                if len(raw) > MAX_CALLBACK_BODY:
+                    return False
     except httpx.HTTPError:
         return False
     finally:
         if own:
             await http.aclose()
-    if resp.status_code not in (200, 204):
-        return False
-    if resp.status_code == 204:
-        return False  # must echo the nonce; empty body proves nothing
     try:
-        body = resp.json()
+        body = json.loads(raw)
     except ValueError:
         return False
     if not isinstance(body, dict):

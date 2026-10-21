@@ -40,6 +40,16 @@ def token_digest(token: str) -> str:
     return sha256hex(token.encode())
 
 
+def b64u_decode(value: str) -> bytes:
+    """base64url decode, alphabet-strict.
+
+    ``validate=True`` rejects anything outside the (translated) base64
+    alphabet instead of silently discarding it, so every signature and
+    claims segment has exactly one valid encoding.
+    """
+    return base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+
+
 def canonical_message(
     token: str, method: str, path: str, timestamp: str, nonce: str, body: bytes
 ) -> bytes:
@@ -89,7 +99,7 @@ def verify(
     if abs(current - ts) > MAX_SKEW:
         return "stale_timestamp"
     try:
-        sig = base64.urlsafe_b64decode(signature_b64 + "=" * (-len(signature_b64) % 4))
+        sig = b64u_decode(signature_b64)
     except (ValueError, TypeError):
         return "invalid_signature"
     try:
@@ -112,7 +122,7 @@ def generate_keypair() -> tuple[Ed25519PrivateKey, str]:
 
 
 def public_key_from_b64(value: str) -> Ed25519PublicKey:
-    raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+    raw = b64u_decode(value)
     if len(raw) != 32:
         raise ValueError("Ed25519 public keys are 32 bytes")
     return Ed25519PublicKey.from_public_bytes(raw)

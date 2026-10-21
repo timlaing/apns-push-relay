@@ -8,6 +8,7 @@ the CLI maps them to a red error plus command help.
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -41,10 +42,25 @@ def load_document(config_path: Path) -> Any:
 
 
 def save_document(config_path: Path, document: Any) -> None:
+    """Write ``document`` back over ``config_path`` atomically.
+
+    A crash mid-write must never truncate the live config: dump to a sibling
+    temp file (same filesystem), then rename it into place. The one-time
+    ``.bak`` copy is written first, before any change.
+    """
     backup = config_path.with_name(f"{config_path.name}.bak")
     shutil.copy2(config_path, backup)
-    with config_path.open("w") as handle:
-        _yaml().dump(document, handle)
+    temp = config_path.with_name(f"{config_path.name}.tmp")
+    try:
+        with temp.open("w") as handle:
+            _yaml().dump(document, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        shutil.copymode(config_path, temp)
+        os.replace(temp, config_path)
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
 
 
 def keys_dir(config_path: Path) -> Path:

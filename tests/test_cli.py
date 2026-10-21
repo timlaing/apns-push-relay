@@ -837,7 +837,8 @@ def test_relay_api_url_env_override(monkeypatch, capsys) -> None:
         return httpx.Response(200, json=STATUS_JSON)
 
     assert main(["status"], transport=httpx.MockTransport(handler)) == 0
-    capsys.readouterr()
+    captured = capsys.readouterr()
+    assert "admin token sent over plain HTTP" in captured.err  # non-loopback http target
     assert seen[0].startswith("http://admin.internal:9999/admin/status")
 
 

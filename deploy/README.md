@@ -26,7 +26,8 @@ mkdir -p keys
 # drop the .p8 key(s) in, e.g. keys/AuthKey_XXXXXXXXXX.p8 (key_id = XXXXXXXXXX)
 # chmod 600 keys/*.p8
 openssl genpkey -algorithm ed25519 -out keys/issuer.pem
-docker compose pull # published image (ghcr.io); skip this line to build from source
+docker compose pull relay    # published relay image (ghcr.io); skip to build from source
+docker compose build nginx   # local edge image (nginx + openssl for the placeholder cert)
 docker compose up -d
 ```
 
@@ -67,13 +68,17 @@ so no ACME client or renewal loop runs against the edge;
 `LETSENCRYPT_EMAIL` is only required when certbot runs. Plain port-80
 requests still redirect, and `/admin` still 404s at this edge, so the admin
 API stays unreachable through the outer proxy. Forward the original `Host`
-header from the upstream proxy.
+header from the upstream proxy, and have it overwrite or append the real
+client address in `X-Forwarded-For` — in this mode nginx passes that list
+through untouched, and per-IP rate limiting keys on its last entry.
 
 ## Operations
 
 - **State** lives on the `relay-data` volume (`relay.db`, SQLite WAL) — the
   only backup target. Config and keys live on the host, outside the
-  container lifecycle.
+  container lifecycle. The relay container runs with a read-only root
+  filesystem; that volume and the deploy-dir mount are its only writable
+  paths.
 - **CLI**: run inside the container —
   `docker compose exec relay relay status` (also `relay doctor`,
   `relay monitor`, `relay app list`, `relay tenant list`, …).

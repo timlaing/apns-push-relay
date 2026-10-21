@@ -32,9 +32,13 @@ class _QuietServer(uvicorn.Server):
 
 
 def _servers(admin: FastAPI, public: FastAPI) -> list[uvicorn.Server]:
+    # No uvicorn access log: it prints request lines verbatim, and admin
+    # query strings carry tenant ids (the app's own event log and metrics
+    # carry the operational picture without them — PLAN §3.4).
+    config = {"host": "0.0.0.0", "access_log": False}
     return [
-        _QuietServer(uvicorn.Config(admin, host="0.0.0.0", port=ADMIN_PORT)),
-        _QuietServer(uvicorn.Config(public, host="0.0.0.0", port=PUBLIC_PORT)),
+        _QuietServer(uvicorn.Config(admin, port=ADMIN_PORT, **config)),
+        _QuietServer(uvicorn.Config(public, port=PUBLIC_PORT, **config)),
     ]
 
 

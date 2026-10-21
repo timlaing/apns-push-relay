@@ -54,7 +54,8 @@ cp deploy/config.yaml.example deploy/config.yaml   # edit: apps, domains
 cp deploy/.env.example deploy/.env                # set API_DOMAIN, RELAY_ADMIN_TOKEN,
                                                   # RELAY_MASTER_SECRET
 # drop .p8 keys at deploy/keys/AuthKey_<KEYID>.p8; config sets key_id (never committed)
-docker compose -f deploy/docker-compose.yml pull               # published image; skip to build from source
+docker compose -f deploy/docker-compose.yml pull relay         # published relay image
+docker compose -f deploy/docker-compose.yml build nginx        # local edge image (openssl baked in)
 docker compose -f deploy/docker-compose.yml up -d
 ```
 

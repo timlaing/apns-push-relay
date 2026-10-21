@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from importlib.metadata import version as package_version
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import typer
@@ -152,12 +153,21 @@ def _api_client(transport: httpx.BaseTransport | None) -> httpx.Client:
     if not token:
         raise CliError("RELAY_ADMIN_TOKEN is not set")
     base_url = os.environ.get("RELAY_API_URL", DEFAULT_API_URL)
+    _warn_cleartext(base_url)
     return httpx.Client(
         base_url=base_url,
         headers={"authorization": f"Bearer {token}"},
         timeout=10.0,
         transport=transport,
     )
+
+
+def _warn_cleartext(base_url: str) -> None:
+    """The admin token rides in the Authorization header — say so before
+    sending it over plain HTTP to anything beyond loopback."""
+    parsed = urlsplit(base_url)
+    if parsed.scheme == "http" and parsed.hostname not in ("127.0.0.1", "::1", "localhost"):
+        err.print(f"[yellow]warning:[/] admin token sent over plain HTTP to {escape(base_url)}")
 
 
 def _call(
