@@ -91,7 +91,7 @@ Point it at a remote relay through an SSH tunnel — the admin API stays
 bound to host loopback and is never exposed:
 
 ```sh
-ssh -L 8000:127.0.0.1:8000 <relay-host>
+ssh -fN -L 8000:127.0.0.1:8000 <relay-host>   # tunnel to the background
 export RELAY_ADMIN_TOKEN=<your admin token>
 relay status                  # default target: http://127.0.0.1:8000
 ```

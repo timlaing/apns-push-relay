@@ -188,7 +188,8 @@ docker compose exec relay relay metrics             # metric table (--json / --p
 - **Remote CLI without the checkout**: install straight from the repo with
   `uv tool install git+https://github.com/timlaing/apns-push-relay`. Keep the
   admin API on host loopback and reach it through an SSH tunnel
-  (`ssh -L 8000:127.0.0.1:8000 <relay-host>`), then export
+  (`ssh -fN -L 8000:127.0.0.1:8000 <relay-host>` — backgrounded, so no
+  remote shell opens), then export
   `RELAY_ADMIN_TOKEN` and use the default `RELAY_API_URL`
   (`http://127.0.0.1:8000`) — never expose port 8000 itself.
 - **Interactive API docs**: set `swagger_ui: true` under `server:` in
