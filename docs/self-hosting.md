@@ -42,7 +42,7 @@ RELAY_MASTER_SECRET=…   # HMAC key for blind destination indexes
 ```
 
 `.env` drives nginx and certbot; the `server:` block in `config.yaml` below
-mirrors the same two domains.
+holds the relay's own options (`swagger_ui`).
 
 **`deploy/config.yaml`** — everything structural lives here; nothing is
 hardcoded in the code. Relative paths (`keys/…`) resolve against the config
@@ -51,8 +51,7 @@ container (compose mounts `./keys` there):
 
 ```yaml
 server:
-  api_domain: api.push.example.org # this instance's API
-  docs_domain: push.example.org # docs host (project URL until a CNAME exists)
+  swagger_ui: false # true → Swagger UI at /docs, ReDoc, OpenAPI schema
 
 enrollment:
   grant_issuer_key: keys/issuer.pem # Ed25519 (see below)
@@ -121,9 +120,9 @@ docker compose -f deploy/docker-compose.yml up -d
 ```
 
 !!! tip "Building from source (alternative)"
-To run a modified build — or when no release image exists yet — let
-compose build from the checkout instead (`build:` in
-`docker-compose.yml`; with no local image, `up` builds automatically):
+    To run a modified build — or when no release image exists yet — let
+    compose build from the checkout instead (`build:` in
+    `docker-compose.yml`; with no local image, `up` builds automatically):
 
     ```sh
     docker compose -f deploy/docker-compose.yml up -d --build
@@ -138,16 +137,18 @@ docker compose exec relay relay status
 ```
 
 !!! note "Staging first"
-Use Let's Encrypt **staging** while iterating on DNS to avoid rate
-limits — the compose file documents the switch.
+    Use Let's Encrypt **staging** while iterating on DNS to avoid rate
+    limits — the compose file documents the switch.
 
 !!! note "Behind another proxy"
-If this stack sits behind an existing TLS-terminating proxy (an
-ingress, another nginx, a tunnel), set `FORCE_HTTPS=0` in `.env` and
-recreate the nginx container: port 80 then serves requests arriving
-with `X-Forwarded-Proto: https` instead of redirecting them. Plain
-port-80 requests still redirect, and `/admin` still 404s at the edge.
-Forward the original `Host` header from the upstream proxy.
+    If this stack sits behind an existing TLS-terminating proxy (an
+    ingress, another nginx, a tunnel), set `FORCE_HTTPS=0` in `.env` and
+    recreate the stack: port 80 then serves requests arriving with
+    `X-Forwarded-Proto: https` instead of redirecting them. The certbot
+    service is scaled to zero in this mode — no ACME client or renewal
+    loop runs, and `LETSENCRYPT_EMAIL` is only required when it runs.
+    Plain port-80 requests still redirect, and `/admin` still 404s at the
+    edge. Forward the original `Host` header from the upstream proxy.
 
 ## 5. Day-two operations
 

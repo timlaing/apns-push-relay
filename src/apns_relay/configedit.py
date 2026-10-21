@@ -99,7 +99,7 @@ def add_app(config_path: Path, entry: dict[str, Any]) -> None:
 
 
 def remove_app(config_path: Path, app_id: str) -> None:
-    """Delete an app entry from ``config.yaml`` (config must still hold one)."""
+    """Delete an app entry from ``config.yaml`` (an empty ``apps:`` list is allowed)."""
     document = load_document(config_path)
     remaining = [
         item
@@ -108,8 +108,6 @@ def remove_app(config_path: Path, app_id: str) -> None:
     ]
     if len(remaining) == len(document["apps"]):
         raise ConfigError(f"no app with id {app_id!r} in {config_path.name}")
-    if not remaining:
-        raise ConfigError(f"refusing to remove {app_id!r}: at least one app must remain")
     document["apps"] = remaining
     save_document(config_path, document)
 

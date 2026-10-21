@@ -522,14 +522,14 @@ def test_apps_delete_unknown_404(env) -> None:
     assert response.json() == {"error": "unknown_app"}
 
 
-def test_apps_delete_last_app_refused(env) -> None:
+def test_apps_delete_last_app_allowed(env) -> None:
     first = env.client.delete(f"/admin/apps/{APP_ID}", headers=ADMIN_HEADERS)
     assert first.status_code == 200  # two → one
     response = env.client.delete(f"/admin/apps/{OTHER_APP_ID}", headers=ADMIN_HEADERS)
-    assert response.status_code == 400
-    assert response.json()["error"] == "last_app"
+    assert response.status_code == 200  # emptying apps: is allowed
+    assert response.json() == {"removed": OTHER_APP_ID, "restartRequired": True}
     ids = [item["id"] for item in _get(env, "/admin/apps").json()["apps"]]
-    assert ids == [OTHER_APP_ID]  # the file keeps its last app
+    assert ids == []
 
 
 def test_apps_endpoints_require_a_config_file(env) -> None:

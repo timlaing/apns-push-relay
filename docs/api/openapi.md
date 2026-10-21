@@ -6,7 +6,7 @@ by `scripts/export_openapi.py` — regenerate it whenever routes change
 
 ## Conventions
 
-- **Base URL**: your instance's `server.api_domain` (e.g.
+- **Base URL**: your instance's API host — `API_DOMAIN` in `.env` (e.g.
   `https://api.push.example.org`).
 - **Content type**: `application/json` everywhere; unknown request fields
   are rejected (`422 invalid_request`, `extra="forbid"`).
@@ -36,9 +36,9 @@ by `scripts/export_openapi.py` — regenerate it whenever routes change
 | `POST /v1/rotate`        | signed | Rotate tenant token + signing key        |
 
 !!! note "Regenerating"
-    The block below is the literal content of `docs/api/openapi.yaml`
-    (included at build time), so it can never drift from the code that was
-    exported.
+The block below is the literal content of `docs/api/openapi.yaml`
+(included at build time), so it can never drift from the code that was
+exported.
 
 ```yaml
 --8<-- "docs/api/openapi.yaml"

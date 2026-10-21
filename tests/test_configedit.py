@@ -168,10 +168,10 @@ def test_remove_app_missing_id(tmp_path: Path) -> None:
         configedit.remove_app(config, "ghost")
 
 
-def test_remove_app_refuses_last_entry(tmp_path: Path) -> None:
+def test_remove_app_allows_last_entry(tmp_path: Path) -> None:
     config = _config(tmp_path, apps_yaml="  - id: alpha\n")
-    with pytest.raises(ConfigError, match="refusing to remove"):
-        configedit.remove_app(config, "alpha")
+    configedit.remove_app(config, "alpha")
+    assert configedit.list_apps(config) == []  # an empty apps: list is valid
 
 
 def test_remove_app_success(tmp_path: Path) -> None:

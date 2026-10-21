@@ -8,10 +8,6 @@
 # App key files are always looked up at keys/AuthKey_<key_id>.p8 here too.
 
 server:
-  api_domain: api.push.example.org # THIS instance's API domain — set by the
-  # operator; no hostname is hardcoded
-  docs_domain: push.example.org # docs host (project URL until a CNAME exists)
-  public_scheme: https
   swagger_ui: false # true → Swagger UI at /docs, ReDoc at /redoc and the
   # schema at /openapi.json on the API domain (off by default; /admin is
   # never exposed either way)

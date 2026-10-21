@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+### Changed
+
+- **The last app can now be removed**: `relay app remove` / `DELETE
+/admin/apps/{id}` no longer refuses when it would empty `apps:` — an
+  empty app list is a valid configuration (add one back with `relay app
+add` and restart).
+- **certbot follows `FORCE_HTTPS`**: with `FORCE_HTTPS=0` (stack behind a
+  TLS-terminating proxy) the certbot service is scaled to zero, so no ACME
+  client or renewal loop runs; `LETSENCRYPT_EMAIL` is only required when
+  certbot runs.
+
+### Removed
+
+- **The inert `server:` settings**: `api_domain`, `docs_domain` and
+  `public_scheme` were validated but never read (the landing page's docs
+  link comes from the image's `DOCS_DOMAIN`). Configs carrying them now
+  fail with `server: unknown keys` — delete those lines.
+
 ## [0.3.1] - 2026-10-21
 
 ### Security

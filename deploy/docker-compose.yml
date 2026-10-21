@@ -43,11 +43,19 @@ services:
   certbot:
     image: certbot/certbot
     restart: unless-stopped
+    # FORCE_HTTPS=0 (behind a TLS-terminating proxy): scaled to zero — no
+    # ACME client or renewal loop runs. FORCE_HTTPS=1 (the default): issue
+    # once and renew as below; the entrypoint guard still fails loudly if
+    # LETSENCRYPT_EMAIL is unset when certbot actually runs.
+    deploy:
+      replicas: ${FORCE_HTTPS:-1}
     depends_on:
       - nginx
     environment:
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
-      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL in .env}
+      # `:?` would be evaluated file-wide even when certbot is scaled out,
+      # so the hard requirement lives in the entrypoint guard below.
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-}
     volumes:
       - certbot-www:/var/www/certbot
       - certbot-conf:/etc/letsencrypt

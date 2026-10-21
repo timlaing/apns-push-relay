@@ -1435,16 +1435,3 @@ def test_app_remove_unknown_id_errors(monkeypatch, capsys) -> None:
 
     assert main(["app", "remove", "ghost", "--yes"], transport=httpx.MockTransport(handler)) == 1
     assert "unknown_app" in capsys.readouterr().err
-
-
-def test_app_remove_last_app_refused(monkeypatch, capsys) -> None:
-    _auth(monkeypatch)
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            400, json={"error": "last_app", "detail": "refusing to remove the last app"}
-        )
-
-    assert main(["app", "remove", "alpha", "--yes"], transport=httpx.MockTransport(handler)) == 1
-    err = capsys.readouterr().err
-    assert "refusing to remove" in err

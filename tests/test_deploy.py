@@ -188,6 +188,13 @@ def test_certbot_present_with_issue_and_renewal_wiring() -> None:
     assert "certbot certonly --webroot" in script  # issue-if-missing
     assert "certbot renew" in script
     assert "sleep 43200" in script  # renew loop every 12h
+    # FORCE_HTTPS=0 (behind a TLS-terminating proxy) scales certbot to zero:
+    # no ACME client runs at all. Default 1 → issue/renew as scripted above.
+    assert certbot["deploy"]["replicas"] == "${FORCE_HTTPS:-1}"
+    # the email is only required when certbot actually runs — compose
+    # interpolates the whole file, so it must not use `:?` here; the
+    # entrypoint's runtime guard still fails loudly in TLS mode.
+    assert certbot["environment"]["LETSENCRYPT_EMAIL"] == "${LETSENCRYPT_EMAIL:-}"
     # shares the ACME webroot with nginx so the challenge location serves it
     assert "certbot-www:/var/www/certbot" in compose["services"]["nginx"]["volumes"]
 
@@ -244,8 +251,6 @@ def test_example_config_loads_structurally() -> None:
     """Structural parse only — key files need not exist for load_config()."""
     path = DEPLOY / "config.yaml.example"
     config = load_config(path, admin_token=ADMIN_TOKEN)
-    assert config.server.api_domain == "api.push.example.org"
-    assert config.server.public_scheme == "https"
     assert config.server.swagger_ui is False
     assert config.enrollment.challenge_ttl == 600
     assert config.enrollment.grant_issuer_key == path.parent / "keys/issuer.pem"

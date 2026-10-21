@@ -136,7 +136,7 @@ def write_config(
     if attest_root_url is not ...:
         enrollment["attest_root_url"] = attest_root_url
     config = {
-        "server": {"api_domain": "api.test.example", "docs_domain": "docs.test.example"},
+        "server": {},
         "enrollment": enrollment,
         "storage": {"database": "relay.db"},
         "apps": apps,

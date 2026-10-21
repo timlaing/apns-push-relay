@@ -208,11 +208,9 @@ def admin_router(state: AppState) -> APIRouter:
         config_path = _config_file()
         if not any(app.get("id") == app_id for app in configedit.list_apps(config_path)):
             raise NotFound("unknown_app")
-        try:
-            configedit.remove_app(config_path, app_id)
-        except ConfigError as exc:
-            # the last-app guard: the config must keep at least one app
-            raise BadRequest("last_app", str(exc)) from None
+        # emptying apps: is allowed — list_apps above already validated the
+        # document shape, so remove_app cannot fail structurally here.
+        configedit.remove_app(config_path, app_id)
         return {"removed": app_id, "restartRequired": True}
 
     return router

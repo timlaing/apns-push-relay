@@ -60,12 +60,14 @@ warning, or check with `curl -k https://api.push.example.org/health`.
 
 To serve through an existing TLS-terminating reverse proxy (an ingress,
 another nginx, a tunnel), set `FORCE_HTTPS=0` in `.env` and recreate the
-nginx container. Port 80 then serves requests that arrive with
-`X-Forwarded-Proto: https` instead of redirecting them — the upstream has
-already terminated TLS. Plain port-80 requests still redirect, and
-`/admin` still 404s at this edge, so the admin API stays unreachable
-through the outer proxy. Forward the original `Host` header from the
-upstream proxy.
+stack (`docker compose up -d`). Port 80 then serves requests that arrive
+with `X-Forwarded-Proto: https` instead of redirecting them — the upstream has
+already terminated TLS. The certbot service is scaled to zero in this mode,
+so no ACME client or renewal loop runs against the edge;
+`LETSENCRYPT_EMAIL` is only required when certbot runs. Plain port-80
+requests still redirect, and `/admin` still 404s at this edge, so the admin
+API stays unreachable through the outer proxy. Forward the original `Host`
+header from the upstream proxy.
 
 ## Operations
 

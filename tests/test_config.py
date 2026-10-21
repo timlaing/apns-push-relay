@@ -44,7 +44,7 @@ def valid_app() -> dict[str, Any]:
 
 def valid_config() -> dict[str, Any]:
     return {
-        "server": {"api_domain": "api.test.example", "docs_domain": "docs.test.example"},
+        "server": {},
         "enrollment": {"grant_issuer_key": "keys/issuer.pem", "challenge_ttl": 600},
         "storage": {"database": "relay.db"},
         "apps": [valid_app()],
@@ -146,14 +146,10 @@ def test_top_level_not_mapping(tmp_path: Path, raw: str) -> None:
     [
         (drop(None, "server"), "missing required key 'server'"),
         (set_in(None, "server", 5), "config.server: expected dict"),
-        (drop("server", "api_domain"), "server: missing required key 'api_domain'"),
-        (drop("server", "docs_domain"), "server: missing required key 'docs_domain'"),
-        (set_in("server", "api_domain", 5), "server.api_domain: expected str"),
-        (set_in("server", "docs_domain", ["x"]), "server.docs_domain: expected str"),
-        (set_in("server", "api_domain", ""), "expected bare hostname"),
-        (set_in("server", "api_domain", "api test example"), "expected bare hostname"),
-        (set_in("server", "api_domain", "api.test/example"), "expected bare hostname"),
-        (set_in("server", "public_scheme", "http"), "only 'https' is supported"),
+        # the historical inert keys are gone: even well-formed values are unknown now
+        (set_in("server", "api_domain", "api.push.example.org"), "server: unknown keys"),
+        (set_in("server", "docs_domain", "push.example.org"), "server: unknown keys"),
+        (set_in("server", "public_scheme", "https"), "server: unknown keys"),
         (set_in("server", "swagger_ui", "yes"), r"server.swagger_ui: expected bool"),
         (set_in("server", "bogus", 1), "server: unknown keys"),
         (set_in(None, "bogus", 1), "unknown top-level keys"),
@@ -179,7 +175,6 @@ def test_top_level_not_mapping(tmp_path: Path, raw: str) -> None:
         (set_in("storage", "bogus", 1), "storage: unknown keys"),
         (drop(None, "apps"), "missing required key 'apps'"),
         (set_in(None, "apps", "test-app"), "config.apps: expected list"),
-        (set_in(None, "apps", []), "at least one app is required"),
         (set_in(None, "apps", [5]), "apps\\[\\?\\]: expected mapping"),
         (set_in(None, "apps", ["not-a-mapping"]), "apps\\[\\?\\]: expected mapping"),
         (set_in(None, "apps", [{"bundle_id": "com.example.x"}]), "missing required key 'id'"),
@@ -276,6 +271,13 @@ def test_grant_ttl_min_greater_than_max(tmp_path: Path) -> None:
 # -- happy path + defaults ----------------------------------------------------
 
 
+def test_config_may_have_no_apps(tmp_path: Path) -> None:
+    raw = valid_config()
+    raw["apps"] = []
+    config = load(tmp_path, raw)
+    assert config.apps == ()  # an empty apps: list is a valid config
+
+
 def test_valid_config_resolves_paths_and_defaults(tmp_path: Path) -> None:
     raw = valid_config()
     del raw["enrollment"]["challenge_ttl"]
@@ -284,8 +286,6 @@ def test_valid_config_resolves_paths_and_defaults(tmp_path: Path) -> None:
     del raw["apps"][0]["grant_ttl"]
     config = load(tmp_path, raw)
 
-    assert config.server.api_domain == "api.test.example"
-    assert config.server.public_scheme == "https"
     assert config.server.swagger_ui is False  # opt-in default when omitted
     assert config.enrollment.grant_issuer_key == tmp_path / "keys/issuer.pem"
     assert config.enrollment.challenge_ttl == 600

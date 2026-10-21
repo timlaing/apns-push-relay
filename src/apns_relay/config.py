@@ -70,20 +70,12 @@ def _str_list(
 
 @dataclass(frozen=True)
 class ServerConfig:
-    api_domain: str
-    docs_domain: str
-    public_scheme: str = "https"
     # Operator opt-in: serve Swagger UI (/docs), ReDoc (/redoc) and the
     # OpenAPI schema (/openapi.json) on the API host. Off by default — the
     # schema ships on the docs site either way; /admin is never exposed.
     swagger_ui: bool = False
 
     def validate(self) -> None:
-        for name, value in (("api_domain", self.api_domain), ("docs_domain", self.docs_domain)):
-            if not value or " " in value or "/" in value:
-                raise ConfigError(f"server.{name}: expected bare hostname, got {value!r}")
-        if self.public_scheme not in ("https",):
-            raise ConfigError("server.public_scheme: only 'https' is supported")
         if not isinstance(self.swagger_ui, bool):
             # YAML `swagger_ui: "false"` must not read as enabled (truthy).
             raise ConfigError(f"server.swagger_ui: expected bool, got {self.swagger_ui!r}")
@@ -346,12 +338,7 @@ def load_config(path: str | Path, *, admin_token: str | None = None) -> RelayCon
     unknown = set(server_raw) - {f.name for f in ServerConfig.__dataclass_fields__.values()}
     if unknown:
         raise ConfigError(f"server: unknown keys {sorted(unknown)}")
-    server = ServerConfig(
-        api_domain=_expect(server_raw, "api_domain", str, "server"),
-        docs_domain=_expect(server_raw, "docs_domain", str, "server"),
-        public_scheme=server_raw.get("public_scheme", "https"),
-        swagger_ui=server_raw.get("swagger_ui", False),
-    )
+    server = ServerConfig(swagger_ui=server_raw.get("swagger_ui", False))
     server.validate()
 
     enroll_raw = _expect(raw, "enrollment", dict, "config")
@@ -405,8 +392,6 @@ def load_config(path: str | Path, *, admin_token: str | None = None) -> RelayCon
         database = path.parent / database
 
     apps_raw = _expect(raw, "apps", list, "config")
-    if not apps_raw:
-        raise ConfigError("config: at least one app is required")
     apps = tuple(_parse_app(item, path.parent) for item in apps_raw)
     ids = [a.id for a in apps]
     if len(set(ids)) != len(ids):
