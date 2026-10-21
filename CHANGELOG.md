@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-21
+
 ### Security
 
 - **The edge caps request bodies on port 80 too**: the 16 kB limit
@@ -233,7 +235,8 @@ add` and restart).
   enrollment spec's Status/Version/Applies-to/License header lines merged
   into a single run-on paragraph.
 
-[Unreleased]: https://github.com/timlaing/apns-push-relay/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/timlaing/apns-push-relay/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.4.1
 [0.4.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.4.0
 [0.3.1]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.3.1
 [0.3.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.3.0
