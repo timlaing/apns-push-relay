@@ -1,0 +1,1694 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Generic, self-hostable APNs push relay — signed requests in, APNs out">
+      
+      
+      
+        <link rel="canonical" href="https://timlaing.github.io/apns-push-relay/api/enrollment-spec/">
+      
+      
+        <link rel="prev" href="../openapi/">
+      
+      
+        <link rel="next" href="../../privacy/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Enrollment spec (v1.2) - apns-push-relay</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#enrollment-grant-specification-threat-model" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="apns-push-relay" class="md-header__button md-logo" aria-label="apns-push-relay" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            apns-push-relay
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Enrollment spec (v1.2)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/timlaing/apns-push-relay" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timlaing/apns-push-relay
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="apns-push-relay" class="md-nav__button md-logo" aria-label="apns-push-relay" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    apns-push-relay
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/timlaing/apns-push-relay" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    timlaing/apns-push-relay
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-it-works/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How it works
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../self-hosting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../openapi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    OpenAPI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Enrollment spec (v1.2)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Enrollment spec (v1.2)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-roles-and-trust-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Roles and trust model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Roles and trust model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#trust-limitation-stated-honestly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trust limitation stated honestly
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-enrollment-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Enrollment flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Enrollment flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-post-v1enrollbegin-unauthenticated-rate-limited-per-ip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 POST /v1/enroll/begin (unauthenticated, rate-limited per IP)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-post-v1enrollfinish-unauthenticated-rate-limited-per-ip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 POST /v1/enroll/finish (unauthenticated, rate-limited per IP)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-grant-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Grant format
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-post-v1enrollrenew-tenant-authenticated-signed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 POST /v1/enroll/renew (tenant-authenticated, signed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-grant-lifetime-app-bounded-tenant-configured" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 Grant lifetime — App-bounded, tenant-configured
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-revocation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6 Revocation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-post-v1rotate-tenant-authenticated-signed-credential-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7 POST /v1/rotate (tenant-authenticated, signed) — credential rotation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-threat-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Threat model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Threat model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Assets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-adversaries-and-mitigations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Adversaries and mitigations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-out-of-scope-v1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Out of scope (v1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-known-limitations-published-in-docs-not-hidden-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Known limitations (published in docs, not hidden here)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-test-requirements-m4-gate-distilled-from-plan-13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Test requirements (M4 gate, distilled from PLAN §13)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-review-decisions-recorded-19-oct-2026" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Review decisions (recorded 19 Oct 2026)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-amendments-v11v12-19-october-2026" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Amendments (v1.1–v1.2, 19 October 2026)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../privacy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Privacy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../limits-and-abuse/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Limits & abuse
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-roles-and-trust-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Roles and trust model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Roles and trust model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#trust-limitation-stated-honestly" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trust limitation stated honestly
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-enrollment-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Enrollment flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Enrollment flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-post-v1enrollbegin-unauthenticated-rate-limited-per-ip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 POST /v1/enroll/begin (unauthenticated, rate-limited per IP)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-post-v1enrollfinish-unauthenticated-rate-limited-per-ip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 POST /v1/enroll/finish (unauthenticated, rate-limited per IP)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-grant-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 Grant format
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#24-post-v1enrollrenew-tenant-authenticated-signed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.4 POST /v1/enroll/renew (tenant-authenticated, signed)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#25-grant-lifetime-app-bounded-tenant-configured" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.5 Grant lifetime — App-bounded, tenant-configured
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#26-revocation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.6 Revocation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#27-post-v1rotate-tenant-authenticated-signed-credential-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.7 POST /v1/rotate (tenant-authenticated, signed) — credential rotation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-threat-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Threat model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Threat model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 Assets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32-adversaries-and-mitigations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 Adversaries and mitigations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33-out-of-scope-v1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 Out of scope (v1)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-known-limitations-published-in-docs-not-hidden-here" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Known limitations (published in docs, not hidden here)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-test-requirements-m4-gate-distilled-from-plan-13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Test requirements (M4 gate, distilled from PLAN §13)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-review-decisions-recorded-19-oct-2026" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Review decisions (recorded 19 Oct 2026)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-amendments-v11v12-19-october-2026" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Amendments (v1.1–v1.2, 19 October 2026)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="enrollment-grant-specification-threat-model">Enrollment &amp; Grant Specification + Threat Model<a class="headerlink" href="#enrollment-grant-specification-threat-model" title="Permanent link">&para;</a></h1>
+<p><strong>Status:</strong> Reviewed v1.0 — M0 gate complete (19 October 2026);
+amended v1.1 — attestation binding steps, signing-key TOFU, Live Activity
+events (see §7); amended v1.2 — credential rotation (§2.7, see §7)</p>
+<p><strong>Version:</strong> 1.2 · 19 October 2026</p>
+<p><strong>Applies to:</strong> relay protocol version 1</p>
+<p><strong>License:</strong> MIT · Copyright (c) 2026 Tim Laing</p>
+<p>This document specifies the highest-risk part of the relay: how a device
+becomes authorized to receive pushes for a tenant, and how that authorization
+is represented, renewed, and revoked. It was written and reviewed before any
+code was written, per the originating design requirements ("specify and review
+the enrollment challenge/attestation mechanism… Do not claim a fully secure,
+stateless enrollment protocol has already been verified"). Review outcomes are
+recorded in §6; the four open questions from the draft are now decisions.</p>
+<p>Everything here is protocol version 1. Breaking changes require a new version
+segment in grant encoding and endpoint paths.</p>
+<hr />
+<h2 id="1-roles-and-trust-model">1. Roles and trust model<a class="headerlink" href="#1-roles-and-trust-model" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Party</th>
+<th>Holds</th>
+<th>Trusted for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Relay operator</strong></td>
+<td><code>.p8</code> keys, grant-issuer signing key, config</td>
+<td>Correct key custody; not trusted with sealed content (by design)</td>
+</tr>
+<tr>
+<td><strong>Tenant backend</strong></td>
+<td>Tenant token, tenant Ed25519 keypair, grants</td>
+<td>Nothing beyond its own users' devices</td>
+</tr>
+<tr>
+<td><strong>iOS app</strong></td>
+<td>Device token, App Attest key, user consent</td>
+<td>Being the sole consent authority; genuine-build proof</td>
+</tr>
+<tr>
+<td><strong>Apple</strong></td>
+<td>APNs, App Attest roots</td>
+<td>Platform root of trust (unavoidable)</td>
+</tr>
+</tbody>
+</table>
+<p>Authorization for one push requires <strong>three independent proofs</strong>:</p>
+<ol>
+<li><strong>Genuine app</strong> — App Attest (the relay will only bind devices running a
+   real, operator-configured build).</li>
+<li><strong>Destination possession</strong> — an APNs challenge push the device must echo
+   (the relay will only bind a token the requester actually holds).</li>
+<li><strong>User consent</strong> — the enrollment runs inside the app after an explicit
+   consent step (the relay binds only what a human approved).</li>
+</ol>
+<p>No single proof suffices: attestation alone doesn't prove token ownership;
+possession alone could be a cloned client; neither implies user intent.</p>
+<h3 id="trust-limitation-stated-honestly">Trust limitation stated honestly<a class="headerlink" href="#trust-limitation-stated-honestly" title="Permanent link">&para;</a></h3>
+<p>The <strong>operator of an instance holds the <code>.p8</code> and grant-issuer key</strong>, but that
+alone does <strong>not</strong> let them push to enrolled devices: APNs requires a
+destination <strong>device token</strong>, and the relay never stores one — tokens exist
+only transiently in <code>enroll/begin</code> and <code>/v1/push</code> requests, and only their
+SHA-256 hashes are persisted (challenge rows, grants). The stock relay
+therefore cannot push to a device it has never been asked to reach, and cannot
+re-reach one whose token it saw only in passing once that request is over.</p>
+<p>The residual risk is a <strong>modified build</strong>: an operator willing to alter the
+code could log tokens as they transit and mint grants for them. That is the
+real trust boundary — tenants trust that the operator runs the published
+software, not a doctored variant. Mitigations: sealed content keeps tenant
+message detail blind even to a logging operator; no-storage limits knowledge
+to what actively transits; self-hosting removes the third party entirely.
+Optional future hardening (not v1): published image digests or reproducible
+builds so tenants can verify the relay runs unmodified code. This belongs in
+<code>docs/privacy.md</code> verbatim.</p>
+<hr />
+<h2 id="2-enrollment-flow">2. Enrollment flow<a class="headerlink" href="#2-enrollment-flow" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a> iOS app (genuine, user consented)              Relay                    APNs
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a> ─────────────────────────────────────────────────┼────────────────────────┼───
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a> 1. app: user taps "Enable remote alerts for &lt;backend&gt;"
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a> 2. app ── POST /v1/enroll/begin ───────────────►│
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>      { app, tenantId, destinationToken }        │
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>      (tenantId + tenant pubkey come from the    │  validate app exists &amp; kind
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>       paired backend; destinationToken is the   │  allowed; token format ok;
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>       fresh APNs token)                         │  mint serverChallenge (1-use,
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>                                                 │  10-min TTL)
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a> 3.                                                 ├─ silent APNs push ────► device
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>      challenge payload: { challengeId, nonce } ◄───┘  (content-available)
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a> 4. app: DCAppAttestService.prepare(serverChallenge)
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>     app: attestKey(keyId, SHA256(serverChallenge))          → attestation
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>     app: fetchAssertion(keyId, SHA256(nonce ‖ serverChallenge)) → assertion
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a> 5. app ── POST /v1/enroll/finish ─────────────►│
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>      { challengeId, attestation, assertion,    │  verify challengeId+nonce
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>        tenantId, tenantPubkey, kinds }         │  verify attestation chain +
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>                                                 │  app ID + environment
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>                                                 │  verify assertion signature
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>                                                 │  issue grant (Ed25519)
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a> 6. grant returned to app
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a> 7. app ── grant over paired TLS connection ──► tenant backend
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>                                                 (app↔backend channel; relay
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>                                                  never contacts the backend)
+</code></pre></div>
+<p><strong>Foreground requirement:</strong> step 3 is a silent (background) push, which iOS
+throttles. Enrollment therefore requires the app to be <strong>active in the
+foreground</strong> — which it is, because the user just tapped consent. The contract
+must state this; silent push is used as a possession <em>challenge</em>, not as a
+reliable wake-up mechanism.</p>
+<h3 id="21-post-v1enrollbegin-unauthenticated-rate-limited-per-ip">2.1 <code>POST /v1/enroll/begin</code> (unauthenticated, rate-limited per IP)<a class="headerlink" href="#21-post-v1enrollbegin-unauthenticated-rate-limited-per-ip" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">"app"</span><span class="p">:</span><span class="w"> </span><span class="s2">"my-app"</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">"tenantId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"hooks.example.com"</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">"destinationToken"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;APNs device or ActivityKit token&gt;"</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li><code>app</code> must exist and permit the requested operation; <code>destinationToken</code>
+  format-validated (length/charset), never stored — only used to send the
+  challenge and hashed into the grant.</li>
+<li>Response: <code>{ "challengeId": "&lt;uuid&gt;", "serverChallenge": "&lt;32B b64u&gt;",
+"expiresAt": &lt;epoch+600&gt; }</code>.</li>
+<li>If the challenge push fails at APNs (<code>410</code>, invalid token) → <code>400
+invalidDestination</code>; nothing is stored.</li>
+<li>State: one row (<code>challengeId</code>, app, tenantId, token <strong>hash</strong>, nonce,
+  serverChallenge, expiry). Deleted on use or expiry. This is the only
+  enrollment state; it is separate from the stateless delivery path.</li>
+</ul>
+<h3 id="22-post-v1enrollfinish-unauthenticated-rate-limited-per-ip">2.2 <code>POST /v1/enroll/finish</code> (unauthenticated, rate-limited per IP)<a class="headerlink" href="#22-post-v1enrollfinish-unauthenticated-rate-limited-per-ip" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">"challengeId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;uuid&gt;"</span><span class="p">,</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">"attestation"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;base64 Apple attestation&gt;"</span><span class="p">,</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">"assertion"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;base64 Apple assertion&gt;"</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">"tenantId"</span><span class="p">:</span><span class="w"> </span><span class="s2">"hooks.example.com"</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">"tenantPubkey"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;Ed25519 public key, base64&gt;"</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nt">"kinds"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"alert"</span><span class="p">,</span><span class="w"> </span><span class="s2">"liveActivity"</span><span class="p">],</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span><span class="nt">"ttl"</span><span class="p">:</span><span class="w"> </span><span class="mi">21600</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="p">}</span>
+</code></pre></div>
+<ul>
+<li><code>ttl</code> optional — requested grant lifetime in seconds; clamped to the App's
+  <code>grant_ttl</code> bounds (§2.5). Omitted → App default.</li>
+</ul>
+<p><strong>Response</strong> (grant + machine-readable consent receipt):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">"grant"</span><span class="p">:</span><span class="w"> </span><span class="s2">"v1.&lt;claims&gt;.&lt;sig&gt;"</span><span class="p">,</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">"consent"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="nt">"tenant"</span><span class="p">:</span><span class="w"> </span><span class="s2">"hooks.example.com"</span><span class="p">,</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">"app"</span><span class="p">:</span><span class="w"> </span><span class="s2">"my-app"</span><span class="p">,</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">"appDisplayName"</span><span class="p">:</span><span class="w"> </span><span class="s2">"My App"</span><span class="p">,</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">"kinds"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"alert"</span><span class="p">,</span><span class="w"> </span><span class="s2">"liveActivity"</span><span class="p">],</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="nt">"boundAt"</span><span class="p">:</span><span class="w"> </span><span class="mi">1792230900</span><span class="p">,</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">    </span><span class="nt">"expiresAt"</span><span class="p">:</span><span class="w"> </span><span class="mi">1792252500</span><span class="p">,</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">    </span><span class="nt">"environment"</span><span class="p">:</span><span class="w"> </span><span class="s2">"production"</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="p">}</span>
+</code></pre></div>
+<p>The <code>consent</code> object is informational JSON describing exactly what was bound
+and for how long — returned so the <strong>app can decide what to do with it</strong>
+(display in settings, log locally, discard). The relay stores none of it; it
+is derived from the grant that was just issued.</p>
+<p>Verification, all mandatory:</p>
+<ol>
+<li><code>challengeId</code> exists, unexpired, unused; request <code>tenantId</code> matches.</li>
+<li>The pushed <code>nonce</code> must be bound into the assertion's signed data
+   (<code>SHA256(nonce ‖ serverChallenge)</code>) — possession proof, single-use.</li>
+<li><strong>App Attest</strong> — verify, in order (Apple, "Validating apps that connect
+   to your server"):</li>
+<li>the x5c chain to Apple's App Attestation Root, and leaf validity dates;</li>
+<li>the <strong>nonce extension</strong> (OID <code>1.2.840.113635.100.8.2</code>) inside the leaf
+      certificate equals <code>SHA256(authData ‖ SHA256(nonce ‖ serverChallenge))</code>
+      — this is what binds the Apple-signed certificate to the otherwise
+      unsigned <code>authData</code>;</li>
+<li>the <strong>credential ID</strong> equals <code>SHA256(leaf public key)</code> in X9.62
+      uncompressed point form, and the COSE key inside <code>authData</code> hashes to
+      the same value (the attested key pair and the certified key are one);</li>
+<li>the attested <strong>app ID equals the configured bundle ID</strong> (<code>rpIdHash</code>)
+      — for assertions too;</li>
+<li><code>authData.counter</code> is 0 in the attestation (counters advance only in
+      assertions);</li>
+<li>the <strong>AAGUID</strong> matches the App's <code>attest_environment</code>
+      (<code>appattestdevelop</code> for development, <code>appattest</code> + seven zero bytes
+      for production).
+      Extract the credential public key.</li>
+<li>Verify the assertion signature with that credential key over
+   <code>SHA256(nonce ‖ serverChallenge)</code>, re-checking the assertion's <code>rpIdHash</code>
+   against the configured bundle ID.</li>
+<li><code>kinds</code> ⊆ the App's configured allowed kinds.</li>
+<li><strong>Signing key is trust-on-first-use.</strong> <code>tenantPubkey</code> is stored only while
+   the tenant has no key; a <em>different</em> key for an already-bound tenant is
+   rejected (<code>invalid_pubkey</code>) — enroll/finish is unauthenticated by design,
+   so key replacement would let anyone holding a stolen token impersonate the
+   tenant. The only way to change a bound key is authenticated
+   <code>POST /v1/rotate</code> (§2.7), which verifies a signature under the current key
+   first. <code>relay tenant revoke</code> remains the revocation control (§2.6).</li>
+</ol>
+<p>Failure at any step → <code>400</code>, challenge burned (single-use even on failure
+after nonce consumption). Success → challenge row deleted, grant issued.</p>
+<p><em>Implementation note (M4): follow Apple's current App Attest verification
+document for exact CBOR field handling and root-cert distribution; this spec
+fixes the security properties (chain, nonce-extension binding, credential-ID
+binding, app ID, environment/AAGUID, single-use serverChallenge, nonce
+binding, signing-key TOFU), not Apple's wire encoding. Validate against a
+physical device before enabling for any production App.</em></p>
+<h3 id="23-grant-format">2.3 Grant format<a class="headerlink" href="#23-grant-format" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>grant = "v1." ‖ b64u(claims) ‖ "." ‖ b64u(Ed25519_sig(claims))
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>claims = canonical JSON (sorted keys, no whitespace):
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>{ "jti":   "&lt;uuid&gt;",                     // denylist handle; rotates on renewal
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  "iss":   "&lt;grant-issuer key id&gt;",      // single issuer key in v1
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  "tok":   "sha256:…",                  // SHA-256 of destination token
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  "ten":   "hooks.example.com",       // tenant ID
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  "tpk":   "&lt;tenant pubkey, base64&gt;",    // binding — see note
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>  "app":   "my-app",
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>  "kinds": ["alert", "background", "liveActivity"],
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>  "env":   "production",                 // from app config, not the caller
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>  "iat":   1792230900,
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>  "exp":   1792252500,                   // iat + ttl (§2.5)
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>  "ttl":   21600 }                       // effective grant TTL, seconds
+</code></pre></div>
+<ul>
+<li><strong>Topic and APNs environment are never caller-supplied</strong> — resolved from
+  <code>app</code> via operator config.</li>
+<li>Verification is database-free: signature → issuer key, <code>exp</code>, denylist,
+  <code>tok</code> vs the token presented in the push request, <code>ten</code>/<code>tpk</code> vs the
+  authenticated tenant, <code>kinds</code> vs the requested kind.</li>
+<li><code>tpk</code> binds the grant to the tenant's signing key: presenting another
+  tenant's keypair fails request authentication regardless of the grant.</li>
+<li>A <strong>stolen grant alone cannot push</strong>: <code>/v1/push</code> also requires the tenant
+  token and a valid Ed25519 request signature. Grants are bearer-ish only in
+  combination with tenant credentials.</li>
+<li>Transport: returned in the <code>enroll/finish</code> response; the app delivers it to
+  its backend over the existing paired TLS connection. The relay never
+  contacts the backend and stores nothing about the grant beyond the <code>jti</code>
+  denylist entry created on revocation.</li>
+</ul>
+<h3 id="24-post-v1enrollrenew-tenant-authenticated-signed">2.4 <code>POST /v1/enroll/renew</code> (tenant-authenticated, signed)<a class="headerlink" href="#24-post-v1enrollrenew-tenant-authenticated-signed" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Requires tenant token + canonical Ed25519 request signature (token-bound,
+  as <code>/v1/push</code>) and the current grant.</li>
+<li>Verified like <code>/v1/push</code> plus: grant unexpired, <code>jti</code> not denylisted, tenant
+  matches. New grant issued with <strong>new <code>jti</code></strong>, <code>iat = now</code>, <code>exp = now + ttl</code>,
+  where <code>ttl</code> is the requested value clamped to App bounds (§2.5; omitted →
+  App default); all other claims unchanged. Old grant lapses naturally at its
+  <code>exp</code> (no backdating, no lifetime extension beyond one TTL per renewal).</li>
+<li>Renewal is authenticated possession of tenant credentials — <strong>no</strong> new App
+  Attest or challenge push: the destination binding was proven at enrollment
+  and the token hash cannot change without re-enrollment.</li>
+</ul>
+<h3 id="25-grant-lifetime-app-bounded-tenant-configured">2.5 Grant lifetime — App-bounded, tenant-configured<a class="headerlink" href="#25-grant-lifetime-app-bounded-tenant-configured" title="Permanent link">&para;</a></h3>
+<p>Per-App config sets the <strong>bounds</strong>; the tenant chooses its own TTL <strong>within
+them</strong> (requested at <code>enroll/finish</code> and again at each <code>renew</code>; omitted → App
+default):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">grant_ttl</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> min</span><span class="p">:</span><span class="w"> </span><span class="nv">900</span><span class="p p-Indicator">,</span><span class="nt"> max</span><span class="p">:</span><span class="w"> </span><span class="nv">86400</span><span class="p p-Indicator">,</span><span class="nt"> default</span><span class="p">:</span><span class="w"> </span><span class="nv">21600</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="c1"># seconds; min 15m, max 24h</span>
+</code></pre></div>
+<ul>
+<li>Operator keeps the abuse ceiling (<code>max</code>) and floor (<code>min</code>); a tenant that
+  wants 10-minute grants for tight revocation semantics or 24-hour grants for
+  an unattended home server can have either, and anything between.</li>
+<li>Requested TTL outside bounds → clamped to the nearest bound (documented
+  behavior, not an error — avoids brittle clients).</li>
+<li>Renewal may change the TTL (within the same bounds) — the new <code>exp</code> is
+  <code>now + requested_ttl</code>.</li>
+<li>Rationale unchanged: short enough that a leaked grant (including <code>tpk</code>) is
+  inert quickly, long enough that a backend outage of reasonable length doesn't
+  mass-invalidate deliveries. Renewal is cheap; schedule at ≤ ½ TTL.</li>
+</ul>
+<h3 id="26-revocation">2.6 Revocation<a class="headerlink" href="#26-revocation" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Trigger</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST /v1/revoke</code> (tenant-authed, signed)</td>
+<td>Backend unsubscribes a device</td>
+<td><code>jti</code> denylisted until its natural <code>exp</code> (bounded storage)</td>
+</tr>
+<tr>
+<td>Operator CLI <code>relay denylist add</code></td>
+<td>Abuse response</td>
+<td><code>jti</code>, <code>tenant</code>, or <code>token-hash</code> denylisted; tenant-wide kill supported</td>
+</tr>
+<tr>
+<td>30-day non-use deletion</td>
+<td>Inactivity</td>
+<td>Tenant + all grants' <code>jti</code>s implicitly dead (tenant token no longer validates)</td>
+</tr>
+<tr>
+<td>Re-enrollment</td>
+<td>New token / new consent</td>
+<td>Old grant simply lapses; new grant issued for the same key (TOFU, §2.2 step 6). A <em>different</em> key requires <code>POST /v1/rotate</code> (§2.7) or <code>relay tenant revoke</code> + re-registration</td>
+</tr>
+</tbody>
+</table>
+<p>Denylist entries carry the grant's <code>exp</code> as their natural purge time — no
+unbounded growth. There is no per-grant <em>stateful</em> check on the delivery path:
+verification reads the denylist (small, hot) and nothing else.</p>
+<hr />
+<h3 id="27-post-v1rotate-tenant-authenticated-signed-credential-rotation">2.7 <code>POST /v1/rotate</code> (tenant-authenticated, signed) — credential rotation<a class="headerlink" href="#27-post-v1rotate-tenant-authenticated-signed-credential-rotation" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Request</strong>: <code>{"pubkey": "&lt;replacement Ed25519 pubkey, base64url&gt;"}</code></li>
+<li><strong>Auth</strong>: tenant token + canonical Ed25519 request signature (token-bound,
+  as <code>/v1/push</code>) under the <strong>current</strong> binding</li>
+<li><strong>Response</strong>: <code>200 {"tenant", "app", "token", "rotated_at"}</code> — <code>token</code> is
+  shown once, like register</li>
+</ul>
+<p>The two credentials age differently: an operator can reissue the token
+(<code>relay tenant reissue</code>), but until §2.7 the tenant could not replace its own
+signing key. A signed request under the current keypair is exactly proof of
+possession, so rotation lives on the authenticated route — never on
+unauthenticated <code>enroll/finish</code> (§2.2 step 6).</p>
+<p>Semantics:</p>
+<ul>
+<li>Verification runs before anything changes: a stale keypair gets
+  <code>401 invalid_signature</code>, a stale token <code>401 unknown_tenant</code>, an unenrolled
+  registration <code>401 enrollment_required</code>.</li>
+<li>Token digest and stored pubkey are replaced in <strong>one</strong> write; the old token
+  stops verifying immediately. Sending the <strong>current</strong> pubkey is a token-only
+  rotation (key untouched).</li>
+<li>Outstanding grants carry the old key (<code>tpk</code>) and stop verifying:
+  <code>403 tenant_mismatch</code> on <code>/v1/push</code>, <code>403 grant_mismatch</code> on renew. Devices
+  re-enroll with the replacement key — TOFU passes because the stored key <em>is</em>
+  the one being enrolled (§2.2 step 6).</li>
+<li>Tenant id, App, quotas and <code>last_seen</code> continue unchanged; the nonce and
+  skew rules of the signed-request contract apply as to every signed route.</li>
+</ul>
+<p>Threat posture: an attacker who already holds <strong>both</strong> token and keypair can
+act as the tenant (A7) and can likewise rotate — rotation is the tenant's
+<strong>incident response</strong>: rotate once, re-enroll devices, and the old key stops
+verifying everywhere at once.</p>
+<hr />
+<h2 id="3-threat-model">3. Threat model<a class="headerlink" href="#3-threat-model" title="Permanent link">&para;</a></h2>
+<h3 id="31-assets">3.1 Assets<a class="headerlink" href="#31-assets" title="Permanent link">&para;</a></h3>
+<p><code>.p8</code> keys · grant-issuer key · tenant tokens + keypairs · device tokens ·
+notification content (plaintext fields + sealed blob) · user attention
+(banners are a resource) · Apple account reputation (APNs abuse → throttling
+or key revocation).</p>
+<h3 id="32-adversaries-and-mitigations">3.2 Adversaries and mitigations<a class="headerlink" href="#32-adversaries-and-mitigations" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Attack</th>
+<th>Mitigation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A1</td>
+<td>Replay a captured push request</td>
+<td>TLS + single-use nonce + token-bound canonical signature (PLAN §3.2)</td>
+</tr>
+<tr>
+<td>A2</td>
+<td>Splice a stolen signature onto another tenant's token</td>
+<td>Token digest inside the signed message; verification binds them</td>
+</tr>
+<tr>
+<td>A3</td>
+<td>Enroll a victim's device token (unsolicited pushes)</td>
+<td>Challenge push must be echoed — attacker never receives it; App Attest requires a genuine app; user consent required in-app</td>
+</tr>
+<tr>
+<td>A4</td>
+<td>Cloned/fake client enrolling devices</td>
+<td>App Attest chain + <strong>nonce-extension / credential-ID binding</strong> + exact bundle-ID + AAGUID/environment check; no attestation → no grant</td>
+</tr>
+<tr>
+<td>A5</td>
+<td>Use a stolen grant to push</td>
+<td>Grant alone is insufficient (tenant token + signature also required); short TTL; <code>jti</code> denylist; token-hash binding stops token substitution</td>
+</tr>
+<tr>
+<td>A6</td>
+<td>Stolen tenant token without keypair</td>
+<td>Cannot sign requests → <code>401</code>; <code>relay tenant reissue</code> rotates</td>
+</tr>
+<tr>
+<td>A7</td>
+<td>Stolen tenant token <strong>and</strong> keypair</td>
+<td>Full tenant impersonation until detected — bounded by per-key quotas, per-token caps, denylist, 30-day expiry; incident path is <code>relay denylist add --tenant</code></td>
+</tr>
+<tr>
+<td>A8</td>
+<td>SSRF / internal probing via <code>callback</code></td>
+<td><code>PublicHTTPS</code> guard: HTTPS/443 only, resolve-once, global-address-only, TLS pinned</td>
+</tr>
+<tr>
+<td>A9</td>
+<td>Quota exhaustion / spam one device</td>
+<td>Per-App burst/daily quota, per-token blind-index cap, nginx per-IP <code>limit_req</code>, 16 KB body cap</td>
+</tr>
+<tr>
+<td>A10</td>
+<td>Push arbitrary topic / environment / APNs host</td>
+<td>Never caller-supplied; resolved from <code>app</code> in operator config</td>
+</tr>
+<tr>
+<td>A11</td>
+<td>Phishing banners under a trusted app's name</td>
+<td>Structured capped fields only (no raw APNs payload), operator-revocable, documented content policy</td>
+</tr>
+<tr>
+<td>A12</td>
+<td>Device token or content leak from relay storage</td>
+<td>No device table, no payload persistence, no content in logs; tokens hashed where stored at all</td>
+</tr>
+<tr>
+<td>A13</td>
+<td>Malicious relay operator (modified build logging tokens in transit)</td>
+<td>Tokens never stored by the stock relay — nothing to steal at rest; sealed blob keeps detail blind; honest disclosure (§1); self-hosting removes the party; optional future: verifiable image digests</td>
+</tr>
+<tr>
+<td>A14</td>
+<td>Enrollment-endpoint DoS</td>
+<td>Per-IP rate limits on <code>enroll/*</code>, challenge TTL, single-use rows</td>
+</tr>
+<tr>
+<td>A15</td>
+<td>Grant-issuer key compromise</td>
+<td><strong>Single issuer key in v1</strong> (no key-set shipping). Rotation runbook (M8): install new key, restart — all outstanding grants (≤ max 24h TTL) lapse early; tenants re-enroll. <code>iss</code> claim present from v1 so a key set can be added later without a grant-format break</td>
+</tr>
+<tr>
+<td>A16</td>
+<td>Replace a tenant's signing key via unauthenticated <code>enroll/finish</code></td>
+<td>Signing key is trust-on-first-use (§2.2 step 6): stored only while empty; a different key → <code>invalid_pubkey</code>; concurrent first-enroll writes are conditional. Rotation only via authenticated <code>POST /v1/rotate</code> (§2.7): a signature under the current key proves possession before replacement; <code>relay tenant revoke</code> stays the revocation control</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-out-of-scope-v1">3.3 Out of scope (v1)<a class="headerlink" href="#33-out-of-scope-v1" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Compromise of the device itself or its keychain.</li>
+<li>Apple/platform failures (APNs outage, App Attest outage) — surfaced as
+  <code>retryable</code> / enrollment failure, never silently.</li>
+<li>Exactly-once delivery (APNs does not provide it; tenants own retry policy).</li>
+<li>Push-to-start Live Activities (deferred).</li>
+</ul>
+<hr />
+<h2 id="4-known-limitations-published-in-docs-not-hidden-here">4. Known limitations (published in docs, not hidden here)<a class="headerlink" href="#4-known-limitations-published-in-docs-not-hidden-here" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Operator trust</strong> — §1: holding the keys is not sufficient — device tokens
+   are never stored, so an operator can only target devices whose tokens
+   actively transit a <strong>modified</strong> relay. Trust reduces to "the operator runs
+   the published software"; sealed content, no-storage, and self-hosting are
+   the mitigations.</li>
+<li><strong>Silent-push challenge</strong> — enrollment needs the app foregrounded; a
+   throttled challenge push fails the flow cleanly (retry <code>begin</code>).</li>
+<li><strong>No instant revocation of a grant without its <code>jti</code> known</strong> — revocation
+   is by <code>jti</code> (known to the holder and, on revoke, to the relay); a grant
+   leaked without any handle lives only to its short <code>exp</code>.</li>
+<li><strong>App reinstall / token rotation</strong> — new token ⇒ <code>tok</code> mismatch ⇒
+   <code>invalidDestination</code> ⇒ re-enrollment. Correct but requires app-side
+   detection and a user-visible retry.</li>
+<li><strong>Attestation replay across devices</strong> — an assertion is bound to one
+   device's credential key and one <code>serverChallenge</code>; cross-device replay
+   fails signature verification. Server-challenge freshness bounds the window.</li>
+</ol>
+<hr />
+<h2 id="5-test-requirements-m4-gate-distilled-from-plan-13">5. Test requirements (M4 gate, distilled from PLAN §13)<a class="headerlink" href="#5-test-requirements-m4-gate-distilled-from-plan-13" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Enrollment rejects: bad attestation chain, wrong app ID, wrong environment,
+  reused <code>challengeId</code>, wrong/expired nonce, kinds not allowed, unknown tenant.</li>
+<li>Forged/expired/cross-destination/cross-tenant grants rejected; <code>tok</code>
+  substitution rejected; denylist effective within one request.</li>
+<li>Renewal: unexpired grant only, <code>jti</code> rotates, old grant lapses at <code>exp</code>.</li>
+<li>Physical-device end-to-end: consent → enroll → alert, Live Activity
+  update/end, and sandbox/production separation verified.</li>
+<li>No secrets, tokens, nonces, or attestation blobs in logs.</li>
+</ul>
+<hr />
+<h2 id="6-review-decisions-recorded-19-oct-2026">6. Review decisions (recorded 19 Oct 2026)<a class="headerlink" href="#6-review-decisions-recorded-19-oct-2026" title="Permanent link">&para;</a></h2>
+<p>The four M0 open questions are resolved:</p>
+<ol>
+<li><strong>Grant TTL — tenant-configurable within App bounds.</strong> Per-App config sets
+   <code>grant_ttl: {min, max, default}</code> (bounds 15 min–24 h); the tenant requests a
+   <code>ttl</code> at <code>enroll/finish</code> and may change it at each <code>renew</code>. Out-of-bounds is
+   clamped, not rejected. Operator keeps the abuse ceiling. (§2.2, §2.4, §2.5)</li>
+<li><strong>Consent receipt — yes, as JSON, app's discretion.</strong> <code>enroll/finish</code>
+   returns a machine-readable <code>consent</code> object (tenant, app, kinds, boundAt,
+   expiresAt, environment). The relay stores none of it; the app decides what
+   to do (display, log, discard). (§2.2)</li>
+<li><strong>Issuer keys — do not ship key support.</strong> v1 uses a <strong>single</strong> grant-issuer
+   key. Rotation is an M8 runbook: install new key, restart, outstanding grants
+   (≤ max TTL) lapse early, tenants re-enroll. The <code>iss</code> claim is present from
+   v1 so a key set can be introduced later without a grant-format break. (A15)</li>
+<li><strong>ActivityKit tokens — same enrollment flow.</strong> <code>kind: liveActivity</code> with the
+   activity push token as <code>destinationToken</code>; no separate channel. The
+   destination-token hash makes alert and liveActivity bindings naturally
+   disjoint, and App Attest / challenge-push / consent apply identically. (§2.1)</li>
+</ol>
+<hr />
+<h2 id="7-amendments-v11v12-19-october-2026">7. Amendments (v1.1–v1.2, 19 October 2026)<a class="headerlink" href="#7-amendments-v11v12-19-october-2026" title="Permanent link">&para;</a></h2>
+<p>Recorded here so the reviewed v1.0 text and the implemented behavior stay
+traceable. Items 1–4 came out of the post-implementation review; item 5
+records the v1.2 addition. None weaken a v1.0 property.</p>
+<ol>
+<li><strong>Attestation binding steps made explicit (§2.2 step 3).</strong> v1.0 named the
+   security properties (chain, app ID, environment); v1.1 pins the exact
+   Apple verification steps that realize them — the leaf-certificate nonce
+   extension (<code>1.2.840.113635.100.8.2</code> = <code>SHA256(authData ‖
+SHA256(nonce ‖ serverChallenge))</code>), credential-ID = <code>SHA256(leaf public
+key)</code> (X9.62 uncompressed), COSE key hash equality, attestation counter 0,
+   and AAGUID pinned per <code>attest_environment</code>. Without the nonce extension
+   check, <code>authData</code> (unsigned) could be forged alongside a replayed genuine
+   chain — voiding threat A4.</li>
+<li><strong>Assertion <code>rpIdHash</code> re-check (§2.2 step 4).</strong> Apple's assertion
+   verification includes re-validating the app-ID hash in the assertion's own
+   authenticator data.</li>
+<li><strong>Signing key is trust-on-first-use (§2.2 step 6, threat A16).</strong>
+   <code>enroll/finish</code> is unauthenticated by design, so a stored <code>tenantPubkey</code>
+   can never be replaced through it. <code>relay tenant revoke</code> is a revocation
+   control, not a rotation mechanism — there is no key rotation in v1; a
+   revoked tenant re-registers as a new binding.</li>
+<li><strong>Live Activity events are <code>update</code>/<code>end</code> only.</strong> Push-to-start requires
+   <code>attributes-type</code>/<code>attributes</code>, which this API does not carry; <code>start</code> is
+   rejected rather than accepted-and-dropped (PLAN §1 already deferred it).</li>
+<li><strong>Credential rotation added (§2.7, v1.2).</strong> Supersedes the "no key
+   rotation" note in amendment 3: <code>POST /v1/rotate</code> now exists, but only on
+   the authenticated route — a signature under the current binding is the
+   possession proof, and both token and pubkey are replaced in one write.
+   <code>enroll/finish</code> stays TOFU-conditional (§2.2 step 6); <code>relay tenant
+revoke</code> stays a revocation control (§2.6).</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/timlaing/apns-push-relay" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.87 1.52 2.34 1.07 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.92 0-1.11.38-2 1.03-2.71-.1-.25-.45-1.29.1-2.64 0 0 .84-.27 2.75 1.02.79-.22 1.65-.33 2.5-.33s1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02.55 1.35.2 2.39.1 2.64.65.71 1.03 1.6 1.03 2.71 0 3.82-2.34 4.66-4.57 4.91.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "search.suggest", "content.code.copy", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
