@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning].
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-21
+
 ### Changed
 
 - **The last app can now be removed**: `relay app remove` / `DELETE
@@ -193,7 +195,8 @@ add` and restart).
   enrollment spec's Status/Version/Applies-to/License header lines merged
   into a single run-on paragraph.
 
-[Unreleased]: https://github.com/timlaing/apns-push-relay/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/timlaing/apns-push-relay/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.4.0
 [0.3.1]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.3.1
 [0.3.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.3.0
 [0.2.0]: https://github.com/timlaing/apns-push-relay/releases/tag/v0.2.0
