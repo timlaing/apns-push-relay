@@ -80,6 +80,22 @@ relay metrics                 # metric table (--json / --prom too)
 relay app list|add|remove     # manage apps via the admin API (keeps comments)
 ```
 
+To run the CLI on a machine without this checkout, install it straight
+from the repo — no PyPI package involved:
+
+```sh
+uv tool install git+https://github.com/timlaing/apns-push-relay
+```
+
+Point it at a remote relay through an SSH tunnel — the admin API stays
+bound to host loopback and is never exposed:
+
+```sh
+ssh -L 8000:127.0.0.1:8000 <relay-host>
+export RELAY_ADMIN_TOKEN=<your admin token>
+relay status                  # default target: http://127.0.0.1:8000
+```
+
 ## Development
 
 ```sh
