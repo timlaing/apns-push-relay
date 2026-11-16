@@ -1,7 +1,7 @@
 # APNs push relay image — FastAPI/uvicorn app + `relay` admin CLI.
 # Build from the repo root: docker build -f deploy/Dockerfile .
 
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 # uv pinned by version (it also generates the committed lockfile) so image
 # builds are reproducible; bump deliberately.
