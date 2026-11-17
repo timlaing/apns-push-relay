@@ -12,6 +12,7 @@ from typing import Any
 
 REPOSITORY = "timlaing/apns-push-relay"
 POLICY_PATH = ".github/workflow-policy.json"
+ACTIONS_PERMISSIONS = "actions/permissions"
 
 
 def api(path: str, method: str = "GET", body: dict[str, Any] | None = None) -> Any:
@@ -101,9 +102,9 @@ def main() -> None:
     if not args.apply:
         return
     api(f"rulesets/{selected['id']}", "PUT", payload)
-    current = api("actions/permissions")
+    current = api(ACTIONS_PERMISSIONS)
     api(
-        "actions/permissions",
+        ACTIONS_PERMISSIONS,
         "PUT",
         {
             "enabled": current["enabled"],
@@ -133,7 +134,7 @@ def main() -> None:
     )
     if actual_checks != rule:
         raise SystemExit("Required checks did not match after update")
-    if not api("actions/permissions")["sha_pinning_required"]:
+    if not api(ACTIONS_PERMISSIONS)["sha_pinning_required"]:
         raise SystemExit("SHA enforcement did not activate")
     print("Workflow policy applied and required checks verified")
 
