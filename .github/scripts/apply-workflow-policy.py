@@ -54,10 +54,12 @@ def match_segments(pattern: list[str], target: list[str]) -> bool:
     )
 
 
-def applies_to_main(detail: dict[str, Any]) -> bool:
+def applies_to_main(detail: dict[str, Any], default_branch: str = "main") -> bool:
     """Select only explicit main-only targets, preserving shared protections."""
     refs = detail.get("conditions", {}).get("ref_name", {})
-    aliases = ["refs/heads/main", "~DEFAULT_BRANCH"]
+    aliases = ["refs/heads/main"]
+    if default_branch == "main":
+        aliases.append("~DEFAULT_BRANCH")
     includes = refs.get("include", [])
     included = bool(includes) and all(pattern in aliases for pattern in includes)
     excluded = any(
@@ -70,13 +72,14 @@ def applies_to_main(detail: dict[str, Any]) -> bool:
 
 def main_ruleset() -> dict[str, Any]:
     """Find the active main policy while preserving all unrelated protections."""
+    default_branch = api("")["default_branch"]
     candidates = api("rulesets?includes_parents=true")
     rulesets = []
     for candidate in candidates:
         if candidate["source_type"] != "Repository" or candidate["enforcement"] != "active":
             continue
         detail = api(f"rulesets/{candidate['id']}")
-        if applies_to_main(detail):
+        if applies_to_main(detail, default_branch):
             rulesets.append(detail)
     if not rulesets:
         raise SystemExit("No active main-branch ruleset; review protection manually")
