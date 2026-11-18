@@ -85,7 +85,10 @@ class ReviewNotifierTests(unittest.TestCase):
 
     def test_enforcement_code_cannot_be_replaced_or_removed(self) -> None:
         """Keeping the trigger while replacing the trusted validator is rejected."""
-        for candidate in ["", POLICY.read_text().replace("createCommitStatus", "getCommit")]:
+        for candidate in [
+            "",
+            POLICY.read_text().replace("createCommitStatus", "getCommit"),
+        ]:
             self.assertNotEqual(self.execute(NOTIFIER.read_text(), candidate).returncode, 0)
 
     def test_aliases_are_rejected(self) -> None:
@@ -100,11 +103,21 @@ class ReviewNotifierTests(unittest.TestCase):
 
     def test_action_updates_require_separate_provenance_verification(self) -> None:
         """Only same-action SHA changes reach the official-commit check."""
-        candidate = POLICY.read_text().replace("3a2844b7e9c422d3c10d287c895573f7108da1b3", "b" * 40)
+        pin = next(
+            step["uses"]
+            for step in DOCUMENT["jobs"]["validate"]["steps"]
+            if step.get("uses", "").startswith("actions/github-script@")
+        )
+        trusted_text = "".join(
+            (REPOSITORY / path).read_text()
+            for path in json.loads(DOCUMENT["jobs"]["validate"]["env"]["PROTECTED_PATHS"])
+        )
+        fixture_sha = next(letter * 40 for letter in "abcdef" if letter * 40 not in trusted_text)
+        candidate = POLICY.read_text().replace(pin, "actions/github-script@" + fixture_sha)
         result = self.execute(NOTIFIER.read_text(), candidate)
         self.assertEqual(result.returncode, 0, result.stderr)
         updates = json.loads(self.output.removeprefix("changed-actions="))
-        self.assertEqual(updates, [{"repository": "actions/github-script", "sha": "b" * 40}])
+        self.assertEqual(updates, [{"repository": "actions/github-script", "sha": fixture_sha}])
         candidate = POLICY.read_text().replace("actions/github-script@", "attacker/action@")
         self.assertNotEqual(self.execute(NOTIFIER.read_text(), candidate).returncode, 0)
 

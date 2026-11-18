@@ -12,7 +12,7 @@ The `workflow_run` coordinator and scanner use the default-branch workflow. The 
 
 ## Apply the matching repository policy
 
-After merging, run `python3 .github/scripts/apply-workflow-policy.py` to inspect the exact ruleset change, then run it with `--apply`. The script refuses to apply an unmerged policy, preserves unrelated rules and bypass actors, binds checks to GitHub Actions, enables SHA enforcement and the replacement automation, and verifies the result. Repository settings shared with the existing workflows can be corrected before merge; new check names and action enforcement must wait for their producing workflows.
+After merging, run `python3 .github/scripts/apply-workflow-policy.py` to inspect the exact ruleset change, then run it with `--apply --validated-head <full-PR-head-SHA>`. The script refuses to apply an unmerged policy, preserves unrelated rules and bypass actors, binds checks to GitHub Actions, enables SHA enforcement and the replacement automation, and verifies the result. Repository settings shared with the existing workflows can be corrected before merge; new check names and action enforcement must wait for their producing workflows.
 
 ## Explicit review requester
 
@@ -29,3 +29,5 @@ The required `Review notifier policy` commit status is written by a checkout-fre
 ### Trusted notifier bootstrap and recovery
 
 After the harmless PR registration job has registered the workflow, the repository owner must inspect the exact workflow revision and dispatch `review-notifier-policy.yml` on the reviewed PR branch with `revision` set to the full current head SHA. Wait for its successful `Review notifier policy` status before dispatching the coordinator. This initial dispatch is an explicit owner attestation of the reviewed baseline; arbitrary writers are not authorized to attest a feature-branch validator. Normal validation uses the default-branch `pull_request_target` workflow. A status from another workflow, revision, failed run or untrusted feature-branch actor must not satisfy this gate.
+
+Settings activation enables replacement workflows first, then verifies successful hosted replacement checks on the explicit reviewed PR head before writing required-check rules. Keep existing protection until that proof exists; failed enablement or missing proof leaves the rules unchanged.

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import re
 import shutil
 import subprocess
 from fnmatch import fnmatchcase
@@ -89,10 +90,36 @@ def main_ruleset() -> dict[str, Any]:
     )
 
 
+def validate_hosted_checks(policy: dict[str, Any], revision: str | None) -> None:
+    """Require real replacement checks on the reviewed PR revision before activation."""
+    if revision is None or re.fullmatch(r"[a-f0-9]{40}", revision) is None:
+        raise SystemExit("Provide --validated-head with the hosted PR head SHA")
+    evidence = api(f"contents/{POLICY_PATH}?ref={revision}")
+    if json.loads(base64.b64decode(evidence["content"])) != policy:
+        raise SystemExit("Hosted evidence must use the reviewed workflow policy")
+    reported = api(f"commits/{revision}/check-runs?filter=latest&per_page=100")
+    statuses = api(f"commits/{revision}/statuses?per_page=100")
+    if reported["total_count"] > 100 or len(statuses) == 100:
+        raise SystemExit("Hosted evidence requires pagination; inspect before applying")
+    checks = {}
+    for item in sorted(reported["check_runs"], key=lambda item: item["id"]):
+        if item.get("app", {}).get("slug") == "github-actions":
+            checks[item["name"]] = item["status"] == "completed" and item["conclusion"] == "success"
+    for item in sorted(statuses, key=lambda item: item["id"]):
+        if item.get("creator", {}).get("login") == "github-actions[bot]":
+            checks[item["context"]] = item["state"] == "success"
+    if not all(checks.get(name, False) for name in policy["required_checks"]):
+        raise SystemExit("Replacement checks have not succeeded on the hosted PR revision")
+
+
 def main() -> None:
     """Plan changes, or apply them after verifying the policy on main."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument(
+        "--validated-head",
+        help="Exact hosted PR revision proving the replacement checks",
+    )
     args = parser.parse_args()
     policy = json.loads(Path(POLICY_PATH).read_text(encoding="utf-8"))
     if args.apply:
@@ -103,11 +130,19 @@ def main() -> None:
     selected = main_ruleset()
     payload = {
         key: selected[key]
-        for key in ["name", "target", "enforcement", "conditions", "bypass_actors", "rules"]
+        for key in [
+            "name",
+            "target",
+            "enforcement",
+            "conditions",
+            "bypass_actors",
+            "rules",
+        ]
         if key in selected
     }
     rule = next(
-        (item for item in payload["rules"] if item["type"] == "required_status_checks"), None
+        (item for item in payload["rules"] if item["type"] == "required_status_checks"),
+        None,
     )
     if rule is None:
         rule = {"type": "required_status_checks", "parameters": {}}
@@ -121,11 +156,24 @@ def main() -> None:
     }
     print(
         json.dumps(
-            {"repository": REPOSITORY, "ruleset_id": selected["id"], "payload": payload}, indent=2
+            {
+                "repository": REPOSITORY,
+                "ruleset_id": selected["id"],
+                "payload": payload,
+            },
+            indent=2,
         )
     )
     if not args.apply:
         return
+    for workflow in [
+        "coderabbit-after-checks.yml",
+        "dependabot-auto-merge.yml",
+        "review-events.yml",
+        "review-notifier-policy.yml",
+    ]:
+        api(f"actions/workflows/{workflow}/enable", "PUT")
+    validate_hosted_checks(policy, args.validated_head)
     api(f"rulesets/{selected['id']}", "PUT", payload)
     current = api(ACTIONS_PERMISSIONS)
     api(
@@ -151,16 +199,13 @@ def main() -> None:
     api(
         "",
         "PATCH",
-        {"allow_auto_merge": True, "delete_branch_on_merge": True, "allow_update_branch": True},
+        {
+            "allow_auto_merge": True,
+            "delete_branch_on_merge": True,
+            "allow_update_branch": True,
+        },
     )
     api("automated-security-fixes", "PUT")
-    for workflow in [
-        "coderabbit-after-checks.yml",
-        "dependabot-auto-merge.yml",
-        "review-events.yml",
-        "review-notifier-policy.yml",
-    ]:
-        api(f"actions/workflows/{workflow}/enable", "PUT")
     actual = api(f"rulesets/{selected['id']}")
     actual_checks = next(
         item for item in actual["rules"] if item["type"] == "required_status_checks"
