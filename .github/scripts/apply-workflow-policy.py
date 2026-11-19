@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import re
 import shutil
 import subprocess
 from fnmatch import fnmatchcase
@@ -53,10 +54,12 @@ def match_segments(pattern: list[str], target: list[str]) -> bool:
     )
 
 
-def applies_to_main(detail: dict[str, Any]) -> bool:
+def applies_to_main(detail: dict[str, Any], default_branch: str = "main") -> bool:
     """Select only explicit main-only targets, preserving shared protections."""
     refs = detail.get("conditions", {}).get("ref_name", {})
-    aliases = ["refs/heads/main", "~DEFAULT_BRANCH"]
+    aliases = ["refs/heads/main"]
+    if default_branch == "main":
+        aliases.append("~DEFAULT_BRANCH")
     includes = refs.get("include", [])
     included = bool(includes) and all(pattern in aliases for pattern in includes)
     excluded = any(
@@ -69,13 +72,14 @@ def applies_to_main(detail: dict[str, Any]) -> bool:
 
 def main_ruleset() -> dict[str, Any]:
     """Find the active main policy while preserving all unrelated protections."""
+    default_branch = api("")["default_branch"]
     candidates = api("rulesets?includes_parents=true")
     rulesets = []
     for candidate in candidates:
         if candidate["source_type"] != "Repository" or candidate["enforcement"] != "active":
             continue
         detail = api(f"rulesets/{candidate['id']}")
-        if applies_to_main(detail):
+        if applies_to_main(detail, default_branch):
             rulesets.append(detail)
     if not rulesets:
         raise SystemExit("No active main-branch ruleset; review protection manually")
@@ -89,25 +93,82 @@ def main_ruleset() -> dict[str, Any]:
     )
 
 
+def reported_checks(reported: dict[str, Any], statuses: list[dict[str, Any]]) -> dict[str, bool]:
+    """Read current results only from the expected producer and result type."""
+    checks = {}
+    for item in sorted(reported["check_runs"], key=lambda item: item["id"]):
+        if item.get("app", {}).get("slug") == "github-actions" and item["name"] not in {
+            "Review passed",
+            "Review notifier policy",
+            "Quality",
+            "Analysis passed",
+        }:
+            checks[item["name"]] = item["status"] == "completed" and item["conclusion"] == "success"
+    for item in sorted(statuses, key=lambda item: item["id"]):
+        if item.get("creator", {}).get("login") == "github-actions[bot]" and item["context"] in {
+            "Review passed",
+            "Review notifier policy",
+            "Quality",
+            "Analysis passed",
+        }:
+            checks[item["context"]] = item["state"] == "success"
+    return checks
+
+
+def validate_hosted_checks(policy: dict[str, Any], revision: str | None) -> None:
+    """Require real replacement checks on the reviewed PR revision before activation."""
+    if not policy["required_checks"]:
+        raise SystemExit("Required check policy is empty")
+    if revision is None or re.fullmatch(r"[a-f0-9]{40}", revision) is None:
+        raise SystemExit("Provide --validated-head with the hosted PR head SHA")
+    evidence = api(f"contents/{POLICY_PATH}?ref={revision}")
+    if json.loads(base64.b64decode(evidence["content"])) != policy:
+        raise SystemExit("Hosted evidence must use the reviewed workflow policy")
+    reported = api(f"commits/{revision}/check-runs?filter=latest&per_page=100")
+    statuses = api(f"commits/{revision}/statuses?per_page=100")
+    if reported["total_count"] > 100 or len(statuses) == 100:
+        raise SystemExit("Hosted evidence requires pagination; inspect before applying")
+    checks = reported_checks(reported, statuses)
+    if not all(checks.get(name, False) for name in policy["required_checks"]):
+        raise SystemExit("Replacement checks have not succeeded on the hosted PR revision")
+
+
 def main() -> None:
     """Plan changes, or apply them after verifying the policy on main."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument(
+        "--validated-head",
+        help="Exact hosted PR revision proving the replacement checks",
+    )
     args = parser.parse_args()
     policy = json.loads(Path(POLICY_PATH).read_text(encoding="utf-8"))
+    if args.apply and (
+        args.validated_head is None or re.fullmatch(r"[a-f0-9]{40}", args.validated_head) is None
+    ):
+        raise SystemExit("Provide --validated-head with the hosted PR head SHA")
     if args.apply:
         remote = api(f"contents/{POLICY_PATH}?ref=main")
         deployed = json.loads(base64.b64decode(remote["content"]))
         if deployed != policy:
             raise SystemExit("The reviewed policy must be merged into main first")
     selected = main_ruleset()
+    original = json.loads(json.dumps(selected))
     payload = {
         key: selected[key]
-        for key in ["name", "target", "enforcement", "conditions", "bypass_actors", "rules"]
+        for key in [
+            "name",
+            "target",
+            "enforcement",
+            "conditions",
+            "bypass_actors",
+            "rules",
+        ]
         if key in selected
     }
     rule = next(
-        (item for item in payload["rules"] if item["type"] == "required_status_checks"), None
+        (item for item in payload["rules"] if item["type"] == "required_status_checks"),
+        None,
     )
     if rule is None:
         rule = {"type": "required_status_checks", "parameters": {}}
@@ -121,11 +182,27 @@ def main() -> None:
     }
     print(
         json.dumps(
-            {"repository": REPOSITORY, "ruleset_id": selected["id"], "payload": payload}, indent=2
+            {
+                "repository": REPOSITORY,
+                "ruleset_id": selected["id"],
+                "payload": payload,
+            },
+            indent=2,
         )
     )
     if not args.apply:
         return
+    for workflow in [
+        "coderabbit-after-checks.yml",
+        "dependabot-auto-merge.yml",
+        "review-events.yml",
+        "review-notifier-policy.yml",
+    ]:
+        api(f"actions/workflows/{workflow}/enable", "PUT")
+    validate_hosted_checks(policy, args.validated_head)
+    latest = api(f"rulesets/{selected['id']}")
+    if any(latest.get(key) != original.get(key) for key in payload):
+        raise SystemExit("Ruleset changed during validation; serialise settings changes and retry")
     api(f"rulesets/{selected['id']}", "PUT", payload)
     current = api(ACTIONS_PERMISSIONS)
     api(
@@ -151,16 +228,13 @@ def main() -> None:
     api(
         "",
         "PATCH",
-        {"allow_auto_merge": True, "delete_branch_on_merge": True, "allow_update_branch": True},
+        {
+            "allow_auto_merge": True,
+            "delete_branch_on_merge": True,
+            "allow_update_branch": True,
+        },
     )
     api("automated-security-fixes", "PUT")
-    for workflow in [
-        "coderabbit-after-checks.yml",
-        "dependabot-auto-merge.yml",
-        "review-events.yml",
-        "review-notifier-policy.yml",
-    ]:
-        api(f"actions/workflows/{workflow}/enable", "PUT")
     actual = api(f"rulesets/{selected['id']}")
     actual_checks = next(
         item for item in actual["rules"] if item["type"] == "required_status_checks"
